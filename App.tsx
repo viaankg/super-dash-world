@@ -49,14 +49,13 @@ const App: React.FC = () => {
   const hyperdriveTimerRef = useRef<number>(0);
   const hasShieldRef = useRef<boolean>(false);
   
-  // Logic to allow only one Hyperdrive roll attempt per speed boost pickup
   const canRollHyperdriveRef = useRef<boolean>(false);
 
   const tutorialMessages = [
     "Welcome Racer! Use WASD or Arrows to drive around the map.",
     "Great! Now hold SHIFT to use your NITRO BOOST! Watch the blue bar at the bottom.",
     "Collect YELLOW COINS to gain a 5s SPEED BOOST and become INVINCIBLE to edges!",
-    "POWER-UPS like Magnets and Shields will spawn every 7s. Grab them for help!",
+    "POWER-UPS like Magnets and Shields give you special abilities. Try the ones nearby!",
     "PRO TIP: Combining Coin Boost + Speed Boost + Shift Nitro has a 30% chance to trigger HYPERDRIVE!",
     "Ready to race? Collect ALL coins as fast as you can to win!"
   ];
@@ -70,12 +69,23 @@ const App: React.FC = () => {
     ));
   };
 
-  const spawnPowerUp = useCallback((forceType?: PowerUpType) => {
+  const spawnPowerUp = useCallback((forceType?: PowerUpType, nearPlayer: boolean = false) => {
     let attempts = 0;
     while (attempts < 100) {
-      const px = Math.random() * (WORLD_SIZE - 400) + 200;
-      const py = Math.random() * (WORLD_SIZE - 400) + 200;
-      if (!isPointInObstacle(px, py, 50)) {
+      let px, py;
+      if (nearPlayer) {
+        const radius = 500;
+        px = posRef.current.x + (Math.random() - 0.5) * radius;
+        py = posRef.current.y + (Math.random() - 0.5) * radius;
+      } else {
+        px = Math.random() * (WORLD_SIZE - 400) + 200;
+        py = Math.random() * (WORLD_SIZE - 400) + 200;
+      }
+      
+      const clampedX = Math.max(150, Math.min(WORLD_SIZE - 150, px));
+      const clampedY = Math.max(150, Math.min(WORLD_SIZE - 150, py));
+
+      if (!isPointInObstacle(clampedX, clampedY, 50)) {
         let type: PowerUpType;
         if (forceType) type = forceType;
         else {
@@ -83,15 +93,15 @@ const App: React.FC = () => {
           type = types[Math.floor(Math.random() * types.length)];
         }
         
-        if (type === 'autoDrive') {
+        if (type === 'autoDrive' && gameState === GameState.PLAYING) {
           setSpawnAlert("AI AUTO-DRIVE SPAWNED!");
           setTimeout(() => setSpawnAlert(null), 3000);
         }
 
         powerUpsRef.current.push({
           id: Math.random().toString(36).substr(2, 9),
-          x: px,
-          y: py,
+          x: clampedX,
+          y: clampedY,
           type,
           createdAt: Date.now()
         });
@@ -99,7 +109,7 @@ const App: React.FC = () => {
       }
       attempts++;
     }
-  }, []);
+  }, [gameState]);
 
   const triggerCutscene = (type: 'hyper' | 'stop') => {
     setCutscene({ type, active: true });
@@ -110,12 +120,17 @@ const App: React.FC = () => {
     setPlayer({ name, character: char });
     setGameState(GameState.TUTORIAL);
     setTutorialStep(0);
-    // Initialize world for tutorial
     posRef.current = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
     velRef.current = 0;
     angleRef.current = -Math.PI / 2;
-    // Single tutorial coin
-    coinsRef.current = [{ id: 999, x: WORLD_SIZE/2 + 300, y: WORLD_SIZE/2, collected: false }];
+    boostRef.current = MAX_BOOST; 
+    powerUpsRef.current = [];
+    coinsRef.current = [{ id: 999, x: WORLD_SIZE/2 + 400, y: WORLD_SIZE/2, collected: false }];
+    
+    // Spawn nearby demo powerups for tutorial context
+    spawnPowerUp('speed', true);
+    spawnPowerUp('magnet', true);
+    spawnPowerUp('shield', true);
   };
 
   const initRealGame = useCallback(() => {
@@ -163,7 +178,7 @@ const App: React.FC = () => {
       hasShield: false
     });
     setGameState(GameState.PLAYING);
-  }, []);
+  }, [spawnPowerUp]);
 
   const handleRespawn = () => {
     posRef.current = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
@@ -207,42 +222,39 @@ const App: React.FC = () => {
         triggerCutscene('stop');
       }
 
-      // Hyperdrive Roll: Must have Coin Boost, Speed Boost, Nitro held, AND canRollHyperdrive must be true
       const isHoldingBoost = keysRef.current['ShiftLeft'] || keysRef.current['ShiftRight'];
       if (canRollHyperdriveRef.current && coinBoostTimerRef.current > 0 && speedBoostTimerRef.current > 0 && isHoldingBoost && boostRef.current > 0) {
-        canRollHyperdriveRef.current = false; // Only one roll per speed boost pickup
+        canRollHyperdriveRef.current = false; 
         if (Math.random() < 0.3) {
           hyperdriveTimerRef.current = 15000;
           triggerCutscene('hyper');
         }
       }
 
+      // Automatic Spawning only in PLAYING state
       if (gameState === GameState.PLAYING) {
         if (now - lastPowerUpSpawnRef.current > 7000) {
           spawnPowerUp();
           lastPowerUpSpawnRef.current = now;
         }
-        // Auto-Drive spawns only every 50 seconds after 150s mark
         if (timerRef.current > 150 && now - lastAutoDriveSpawnRef.current > 50000) {
           spawnPowerUp('autoDrive');
           lastAutoDriveSpawnRef.current = now;
         }
       }
 
-      // Physics variables
       const turnSpeed = 0.05 * char.handling;
       let speedMult = char.speed;
       if (coinBoostTimerRef.current > 0) speedMult *= 1.5;
       if (speedBoostTimerRef.current > 0) speedMult *= 1.5;
       if (autoDriveTimerRef.current > 0) speedMult *= 1.5;
-      if (hyperdriveTimerRef.current > 0) speedMult *= 3.0; // 200% extra speed
+      if (hyperdriveTimerRef.current > 0) speedMult *= 3.0;
 
       const accel = 0.15 * speedMult;
       const friction = 0.98;
       const maxVel = 8 * speedMult;
       const boostMult = 1.8 * char.boostPower;
 
-      // AI Logic: Path to coins while avoiding walls/obstacles
       if (autoDriveTimerRef.current > 0 && hyperdriveTimerRef.current <= 0) {
         const uncollected = coinsRef.current.filter(c => !c.collected);
         if (uncollected.length > 0) {
@@ -263,12 +275,10 @@ const App: React.FC = () => {
           const obstacleRight = isPointInObstacle(posRef.current.x + Math.cos(rightWhiskAngle) * lookAheadDist, posRef.current.y + Math.sin(rightWhiskAngle) * lookAheadDist, 50);
 
           if (obstacleAhead) {
-            // Dodge logic
             if (obstacleLeft && !obstacleRight) angleRef.current += turnSpeed * 1.8;
             else if (!obstacleLeft && obstacleRight) angleRef.current -= turnSpeed * 1.8;
-            else angleRef.current += turnSpeed * 3.0; // Panic turn
+            else angleRef.current += turnSpeed * 3.0;
           } else {
-            // Seek coin
             let angleDiff = targetAngle - angleRef.current;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
@@ -277,7 +287,6 @@ const App: React.FC = () => {
         }
       }
 
-      // Drive inputs
       if (autoDriveTimerRef.current <= 0) {
         if (keysRef.current['KeyA'] || keysRef.current['ArrowLeft']) angleRef.current -= turnSpeed;
         if (keysRef.current['KeyD'] || keysRef.current['ArrowRight']) angleRef.current += turnSpeed;
@@ -307,7 +316,6 @@ const App: React.FC = () => {
       posRef.current.x += Math.cos(angleRef.current) * velRef.current;
       posRef.current.y += Math.sin(angleRef.current) * velRef.current;
 
-      // Collisions (Skipped in hyperdrive)
       if (hyperdriveTimerRef.current <= 0) {
         const playerRadius = 15;
         OBSTACLES.forEach(obs => {
@@ -326,14 +334,12 @@ const App: React.FC = () => {
             else if (minOverlap === dr) { posRef.current.x = right; normalAngle = 0; }
             else if (minOverlap === dt_side) { posRef.current.y = top; normalAngle = -Math.PI/2; }
             else { posRef.current.y = bottom; normalAngle = Math.PI/2; }
-            // Bounce and Turn Away
             velRef.current *= -0.4;
             angleRef.current = normalAngle + (Math.random() - 0.5) * 0.8;
           }
         });
       }
 
-      // World Edges with Hyperdrive Teleportation
       const inHyperdrive = hyperdriveTimerRef.current > 0;
       let hitBoundary = false;
       if (posRef.current.x < 0) { if (inHyperdrive) posRef.current.x = WORLD_SIZE - 40; else { posRef.current.x = 10; hitBoundary = true; } }
@@ -357,14 +363,13 @@ const App: React.FC = () => {
         }
       }
 
-      // PowerUps
       powerUpsRef.current = powerUpsRef.current.filter(pu => {
         const dx = posRef.current.x - pu.x;
         const dy = posRef.current.y - pu.y;
         if (Math.sqrt(dx*dx + dy*dy) < 40) {
           if (pu.type === 'speed') {
             speedBoostTimerRef.current = 5000;
-            canRollHyperdriveRef.current = true; // Roll granted upon speed pickup
+            canRollHyperdriveRef.current = true;
           }
           if (pu.type === 'shield') hasShieldRef.current = true;
           if (pu.type === 'magnet') magnetTimerRef.current = 10000;
@@ -374,8 +379,8 @@ const App: React.FC = () => {
         return true;
       });
 
-      // Coins
-      const collectionRadius = magnetTimerRef.current > 0 ? 150 : 40;
+      // Enhanced magnet radius (1.5x of 150 = 225) if in hyperdrive
+      const collectionRadius = hyperdriveTimerRef.current > 0 ? 225 : (magnetTimerRef.current > 0 ? 150 : 40);
       let collectedCount = 0;
       coinsRef.current.forEach(coin => {
         if (!coin.collected) {
@@ -424,6 +429,8 @@ const App: React.FC = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.save();
       ctx.translate(-camX, -camY);
+      
+      // Background Grid
       ctx.fillStyle = '#86efac';
       ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
       ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 10; ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
@@ -432,12 +439,16 @@ const App: React.FC = () => {
         ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, WORLD_SIZE); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(WORLD_SIZE, i); ctx.stroke();
       }
+
+      // Obstacles
       OBSTACLES.forEach(obs => {
         ctx.fillStyle = obs.type === 'tree' ? '#166534' : '#525252';
         if (hyperdriveTimerRef.current > 0) ctx.globalAlpha = 0.3;
         ctx.beginPath(); ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 10); ctx.fill();
         ctx.globalAlpha = 1.0;
       });
+
+      // PowerUps on Map
       powerUpsRef.current.forEach(pu => {
         ctx.save(); ctx.translate(pu.x, pu.y);
         ctx.scale(1 + Math.sin(Date.now() / 200) * 0.1, 1 + Math.sin(Date.now() / 200) * 0.1);
@@ -450,24 +461,90 @@ const App: React.FC = () => {
         else if (pu.type === 'autoDrive') { ctx.font = 'bold 20px Bungee'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('AI', 0, 0); }
         ctx.restore();
       });
+
+      // Coins
       coinsRef.current.forEach(coin => {
         if (!coin.collected) {
           ctx.fillStyle = '#facc15'; ctx.strokeStyle = '#854d0e'; ctx.lineWidth = 3;
           ctx.beginPath(); ctx.arc(coin.x, coin.y, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         }
       });
-      if (speedBoostTimerRef.current > 0 || coinBoostTimerRef.current > 0 || autoDriveTimerRef.current > 0 || hyperdriveTimerRef.current > 0) {
-        const trailColor = hyperdriveTimerRef.current > 0 ? 'rgba(255, 255, 0, 0.5)' : 'rgba(59, 130, 246, 0.3)';
-        const count = hyperdriveTimerRef.current > 0 ? 15 : 6;
+
+      // Visual Effects (Trails, Magnet Aura, Shield)
+      const isBoosting = (keysRef.current['ShiftLeft'] || keysRef.current['ShiftRight']) && boostRef.current > 0;
+      if (speedBoostTimerRef.current > 0 || coinBoostTimerRef.current > 0 || autoDriveTimerRef.current > 0 || hyperdriveTimerRef.current > 0 || isBoosting) {
+        const isHyper = hyperdriveTimerRef.current > 0;
+        const trailColor = isHyper ? 'rgba(255, 255, 0, 0.5)' : (isBoosting ? 'rgba(255, 100, 0, 0.4)' : 'rgba(59, 130, 246, 0.3)');
+        const count = isHyper ? 20 : (isBoosting ? 12 : 6);
         for (let i = 0; i < count; i++) {
-          ctx.fillStyle = trailColor; const offset = (i + 1) * 15;
-          ctx.beginPath(); ctx.arc(posRef.current.x - Math.cos(angleRef.current) * offset, posRef.current.y - Math.sin(angleRef.current) * offset, 12 - i, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = trailColor; const offset = (i + 1) * 12;
+          ctx.beginPath(); 
+          ctx.arc(posRef.current.x - Math.cos(angleRef.current) * offset, posRef.current.y - Math.sin(angleRef.current) * offset, Math.max(0, 15 - i * 0.8), 0, Math.PI * 2); 
+          ctx.fill();
         }
       }
+
+      // Magnet Aura (reflects current collection radius)
+      if (magnetTimerRef.current > 0 || hyperdriveTimerRef.current > 0) {
+        ctx.save();
+        ctx.translate(posRef.current.x, posRef.current.y);
+        ctx.strokeStyle = hyperdriveTimerRef.current > 0 ? 'rgba(255, 255, 0, 0.4)' : 'rgba(34, 197, 94, 0.4)';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 15]);
+        const pulse = Math.sin(Date.now() / 150) * 20;
+        const activeRadius = hyperdriveTimerRef.current > 0 ? 225 : 150;
+        ctx.beginPath();
+        ctx.arc(0, 0, activeRadius + pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Player Character
       ctx.save(); ctx.translate(posRef.current.x, posRef.current.y); ctx.rotate(angleRef.current);
+      
+      // Hyperdrive Glow
+      if (hyperdriveTimerRef.current > 0) {
+        ctx.shadowBlur = 40;
+        ctx.shadowColor = 'yellow';
+      }
+
+      // Body
       ctx.fillStyle = hyperdriveTimerRef.current > 0 ? '#fbbf24' : (autoDriveTimerRef.current > 0 ? '#ef4444' : char.color);
       ctx.beginPath(); ctx.roundRect(-25, -15, 50, 30, 8); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore();
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3; ctx.stroke();
+      
+      // NEW: Windshield Window (positioned toward the front - positive X)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.beginPath();
+      ctx.roundRect(5, -11, 12, 22, 4);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Wind/Speed Lines
+      if (speedBoostTimerRef.current > 0 || hyperdriveTimerRef.current > 0) {
+        ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(25, -10); ctx.lineTo(40, -10); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(25, 10); ctx.lineTo(40, 10); ctx.stroke();
+      }
+      ctx.restore();
+
+      // Shield Effect
+      if (hasShieldRef.current) {
+        ctx.save();
+        ctx.translate(posRef.current.x, posRef.current.y);
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.6)';
+        ctx.lineWidth = 5;
+        const shieldPulse = Math.sin(Date.now() / 100) * 5;
+        ctx.beginPath();
+        ctx.arc(0, 0, 45 + shieldPulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.1)';
+        ctx.fill();
+        ctx.restore();
+      }
+
       ctx.restore();
     };
 
@@ -481,7 +558,7 @@ const App: React.FC = () => {
     };
     frameIdRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameIdRef.current);
-  }, [gameState, player.character]);
+  }, [gameState, player.character, spawnPowerUp]);
 
   return (
     <div className={`relative w-screen h-screen overflow-hidden bg-green-200 ${cutscene.active ? 'scale-[1.08] grayscale-[0.3]' : ''} transition-all duration-300`}>
@@ -492,9 +569,9 @@ const App: React.FC = () => {
           <canvas ref={canvasRef} className="block w-full h-full" />
           
           {gameState === GameState.TUTORIAL && (
-            <div className="fixed bottom-12 left-1/2 -translate-x-1/2 w-full max-w-2xl z-[100] p-6">
-              <div className="bg-white/95 backdrop-blur-lg rounded-3xl border-8 border-blue-600 p-10 shadow-2xl flex flex-col items-center gap-8 animate-in slide-in-from-bottom duration-500">
-                <p className="bungee text-3xl text-center text-gray-800 leading-tight">
+            <div className="fixed top-12 left-1/2 -translate-x-1/2 w-full max-w-2xl z-[100] p-6">
+              <div className="bg-white/95 backdrop-blur-lg rounded-3xl border-8 border-blue-600 p-8 shadow-2xl flex flex-col items-center gap-6 animate-in slide-in-from-top duration-500">
+                <p className="bungee text-2xl text-center text-gray-800 leading-tight">
                   {tutorialMessages[tutorialStep]}
                 </p>
                 <button 
@@ -502,7 +579,7 @@ const App: React.FC = () => {
                     if (tutorialStep < tutorialMessages.length - 1) setTutorialStep(s => s + 1);
                     else initRealGame();
                   }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white bungee px-14 py-6 rounded-2xl text-3xl shadow-xl transition-all active:scale-90"
+                  className="bg-blue-600 hover:bg-blue-700 text-white bungee px-10 py-4 rounded-2xl text-2xl shadow-xl transition-all active:scale-95"
                 >
                   {tutorialStep < tutorialMessages.length - 1 ? "NEXT STEP!" : "GO RACING!"}
                 </button>
