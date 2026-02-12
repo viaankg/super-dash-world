@@ -20,7 +20,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-white rounded-3xl p-8 max-w-2xl w-full shadow-2xl border-8 border-yellow-400 my-8">
-        <h1 className="bungee text-5xl text-center text-blue-600 mb-8 drop-shadow-md">SUPER DASH WORLD</h1>
+        <h1 className="bungee text-5xl text-center text-blue-600 mb-8 drop-shadow-md tracking-tighter">VELOCITY VALLEY</h1>
         
         <div className="mb-8">
           <label className="block text-gray-700 font-bold mb-2 text-xl">What's your name, Racer?</label>

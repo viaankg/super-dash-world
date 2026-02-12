@@ -7,7 +7,7 @@ export async function getVictoryMessage(playerName: string, timeTaken: number, s
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `The player ${playerName} just finished a racing game called Super Dash World. 
+      contents: `The player ${playerName} just finished a racing game called Velocity Valley. 
       Their time was ${timeTaken.toFixed(2)} seconds and their final score was ${score}. 
       Generate a short, super enthusiastic, kid-friendly victory message (max 2 sentences).`,
       config: {

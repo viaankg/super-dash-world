@@ -227,13 +227,9 @@ const App: React.FC = () => {
   }, [spawnPowerUp]);
 
   const handleRespawn = useCallback(() => {
-    if (gameState === GameState.TUTORIAL) {
-      posRef.current = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
-      velRef.current = 0;
-    } else {
-      initRealGame();
-    }
-  }, [initRealGame, gameState]);
+    // Returns the player to the character selection screen
+    setGameState(GameState.START);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -274,7 +270,6 @@ const App: React.FC = () => {
       if (coinBoostTimerRef.current > 0) coinBoostTimerRef.current = Math.max(0, coinBoostTimerRef.current - dt);
       if (speedBoostTimerRef.current > 0) speedBoostTimerRef.current = Math.max(0, speedBoostTimerRef.current - dt);
       if (magnetTimerRef.current > 0) magnetTimerRef.current = Math.max(0, magnetTimerRef.current - dt);
-      // Fix: Use autoDriveTimerRef.current instead of autoDriveLeft which is not defined in this scope.
       if (autoDriveTimerRef.current > 0) autoDriveTimerRef.current = Math.max(0, autoDriveTimerRef.current - dt);
       
       const prevHyperdrive = hyperdriveTimerRef.current;

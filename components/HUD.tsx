@@ -108,7 +108,7 @@ const HUD: React.FC<HUDProps> = ({
         <button 
           onClick={onRespawn}
           className="pointer-events-auto bg-red-500 hover:bg-red-600 active:scale-95 text-white p-4 rounded-full border-4 border-white shadow-lg transition-all"
-          title="Respawn"
+          title="Exit to Menu"
         >
           <RotateCcw className="w-8 h-8" />
         </button>
