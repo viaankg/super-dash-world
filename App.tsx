@@ -54,7 +54,7 @@ const App: React.FC = () => {
   const canRollHyperdriveRef = useRef<boolean>(false);
   const abilityCooldownRef = useRef<number>(0);
   const isPhasingRef = useRef<boolean>(false);
-  const sparkyPulseTimerRef = useRef<number>(0); // New timer for Sparky's visual effect
+  const sparkyPulseTimerRef = useRef<number>(0); 
 
   const tutorialMessages = [
     "Welcome Racer! Use WASD or Arrows to drive around the map.",
@@ -136,7 +136,7 @@ const App: React.FC = () => {
       setTimeout(() => { isPhasingRef.current = false; }, 5000);
     } else if (char.id === 'sparky') {
       const radius = 600;
-      sparkyPulseTimerRef.current = 800; // Trigger visual for 0.8s
+      sparkyPulseTimerRef.current = 800; 
       coinsRef.current.forEach(coin => {
         if (!coin.collected) {
           const dx = posRef.current.x - coin.x;
@@ -226,15 +226,19 @@ const App: React.FC = () => {
     setGameState(GameState.PLAYING);
   }, [spawnPowerUp]);
 
-  const handleRespawn = () => {
-    posRef.current = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
-    velRef.current = 0;
-  };
+  const handleRespawn = useCallback(() => {
+    if (gameState === GameState.TUTORIAL) {
+      posRef.current = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
+      velRef.current = 0;
+    } else {
+      initRealGame();
+    }
+  }, [initRealGame, gameState]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       keysRef.current[e.code] = true;
-      if (e.code === 'KeyQ' && gameState === GameState.PLAYING) {
+      if (e.code === 'KeyQ' && (gameState === GameState.PLAYING || gameState === GameState.TUTORIAL)) {
         handleUseAbility();
       }
     };
@@ -256,8 +260,9 @@ const App: React.FC = () => {
 
     const update = (dt: number) => {
       const now = Date.now();
-      if (gameState === GameState.PLAYING) {
-        timerRef.current += dt / 1000;
+      if (gameState === GameState.PLAYING || gameState === GameState.TUTORIAL) {
+        if (gameState === GameState.PLAYING) timerRef.current += dt / 1000;
+        
         if (abilityCooldownRef.current > 0) {
           abilityCooldownRef.current = Math.max(0, abilityCooldownRef.current - dt);
         }
@@ -269,6 +274,7 @@ const App: React.FC = () => {
       if (coinBoostTimerRef.current > 0) coinBoostTimerRef.current = Math.max(0, coinBoostTimerRef.current - dt);
       if (speedBoostTimerRef.current > 0) speedBoostTimerRef.current = Math.max(0, speedBoostTimerRef.current - dt);
       if (magnetTimerRef.current > 0) magnetTimerRef.current = Math.max(0, magnetTimerRef.current - dt);
+      // Fix: Use autoDriveTimerRef.current instead of autoDriveLeft which is not defined in this scope.
       if (autoDriveTimerRef.current > 0) autoDriveTimerRef.current = Math.max(0, autoDriveTimerRef.current - dt);
       
       const prevHyperdrive = hyperdriveTimerRef.current;
@@ -310,6 +316,9 @@ const App: React.FC = () => {
       const maxVel = 8 * speedMult;
       const boostMult = 1.8 * char.boostPower;
 
+      let aiBraking = false;
+      let aiTurnWeight = 0;
+
       if (autoDriveTimerRef.current > 0 && hyperdriveTimerRef.current <= 0) {
         const uncollected = coinsRef.current.filter(c => !c.collected);
         if (uncollected.length > 0) {
@@ -321,23 +330,41 @@ const App: React.FC = () => {
           });
           
           const targetAngle = Math.atan2(closest.y - posRef.current.y, closest.x - posRef.current.x);
-          const lookAheadDist = 160;
-          const leftWhiskAngle = angleRef.current - 0.7;
-          const rightWhiskAngle = angleRef.current + 0.7;
           
-          const obstacleAhead = isPointInObstacle(posRef.current.x + Math.cos(angleRef.current) * lookAheadDist, posRef.current.y + Math.sin(angleRef.current) * lookAheadDist, 60);
-          const obstacleLeft = isPointInObstacle(posRef.current.x + Math.cos(leftWhiskAngle) * lookAheadDist, posRef.current.y + Math.sin(leftWhiskAngle) * lookAheadDist, 50);
-          const obstacleRight = isPointInObstacle(posRef.current.x + Math.cos(rightWhiskAngle) * lookAheadDist, posRef.current.y + Math.sin(rightWhiskAngle) * lookAheadDist, 50);
+          // REFINED AI PILOT STEERING
+          let angleDiff = targetAngle - angleRef.current;
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          
+          aiTurnWeight = angleDiff;
 
-          if (obstacleAhead) {
-            if (obstacleLeft && !obstacleRight) angleRef.current += turnSpeed * 1.8;
-            else if (!obstacleLeft && obstacleRight) angleRef.current -= turnSpeed * 1.8;
-            else angleRef.current += turnSpeed * 3.0;
-          } else {
-            let angleDiff = targetAngle - angleRef.current;
-            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-            angleRef.current += angleDiff * 0.15;
+          // OBSTACLES SCAN (Weighted avoidance)
+          if (!isPhasingRef.current) {
+            const scanDist = 180;
+            const scanAngles = [-0.8, -0.4, 0, 0.4, 0.8];
+            let pushForce = 0;
+
+            for (const sa of scanAngles) {
+              const checkAngle = angleRef.current + sa;
+              const checkX = posRef.current.x + Math.cos(checkAngle) * scanDist;
+              const checkY = posRef.current.y + Math.sin(checkAngle) * scanDist;
+              
+              if (isPointInObstacle(checkX, checkY, 50)) {
+                // If there's an obstacle, push the steering away from it
+                pushForce += (sa > 0 ? -0.5 : (sa < 0 ? 0.5 : (angleDiff > 0 ? -0.3 : 0.3)));
+                if (Math.abs(sa) < 0.2) aiBraking = true; // Brake if it's right in front
+              }
+            }
+            aiTurnWeight += pushForce;
+          }
+
+          // Apply turning
+          const finalTurn = Math.max(-1, Math.min(1, aiTurnWeight)) * 0.2;
+          angleRef.current += finalTurn;
+
+          // If turn is extreme (> 90 degrees), slow down to pivot
+          if (Math.abs(angleDiff) > Math.PI / 2) {
+            aiBraking = true;
           }
         }
       }
@@ -348,10 +375,15 @@ const App: React.FC = () => {
       }
       
       let currentAccel = 0;
-      const shouldAutoBoost = autoDriveTimerRef.current > 0 && boostRef.current > 40;
+      const isAutoDriving = autoDriveTimerRef.current > 0 || hyperdriveTimerRef.current > 0;
+      const shouldAutoBoost = autoDriveTimerRef.current > 0 && boostRef.current > 30 && !aiBraking;
 
-      if (autoDriveTimerRef.current > 0 || hyperdriveTimerRef.current > 0) {
-        currentAccel = accel; 
+      if (isAutoDriving) {
+        if (aiBraking && hyperdriveTimerRef.current <= 0) {
+          currentAccel = -accel * 0.3; // Gentle brake to pivot
+        } else {
+          currentAccel = accel; 
+        }
       } else {
         if (keysRef.current['KeyW'] || keysRef.current['ArrowUp']) currentAccel = accel;
         if (keysRef.current['KeyS'] || keysRef.current['ArrowDown']) currentAccel = -accel * 0.5;
@@ -397,10 +429,10 @@ const App: React.FC = () => {
 
       const inHyperdrive = hyperdriveTimerRef.current > 0;
       let hitBoundary = false;
-      if (posRef.current.x < 0) { if (inHyperdrive || isPhasingRef.current) posRef.current.x = WORLD_SIZE - 40; else { posRef.current.x = 10; hitBoundary = true; } }
-      if (posRef.current.x > WORLD_SIZE) { if (inHyperdrive || isPhasingRef.current) posRef.current.x = 40; else { posRef.current.x = WORLD_SIZE - 10; hitBoundary = true; } }
-      if (posRef.current.y < 0) { if (inHyperdrive || isPhasingRef.current) posRef.current.y = WORLD_SIZE - 40; else { posRef.current.y = 10; hitBoundary = true; } }
-      if (posRef.current.y > WORLD_SIZE) { if (inHyperdrive || isPhasingRef.current) posRef.current.y = 40; else { posRef.current.y = WORLD_SIZE - 10; hitBoundary = true; } }
+      if (posRef.current.x < 0) { if (inHyperdrive) posRef.current.x = WORLD_SIZE - 40; else { posRef.current.x = 10; hitBoundary = true; } }
+      if (posRef.current.x > WORLD_SIZE) { if (inHyperdrive) posRef.current.x = 40; else { posRef.current.x = WORLD_SIZE - 10; hitBoundary = true; } }
+      if (posRef.current.y < 0) { if (inHyperdrive) posRef.current.y = WORLD_SIZE - 40; else { posRef.current.y = 10; hitBoundary = true; } }
+      if (posRef.current.y > WORLD_SIZE) { if (inHyperdrive) posRef.current.y = 40; else { posRef.current.y = WORLD_SIZE - 10; hitBoundary = true; } }
 
       if (hitBoundary && !isPhasingRef.current) {
         const isInvincible = coinBoostTimerRef.current > 0 || autoDriveTimerRef.current > 0;
@@ -546,7 +578,6 @@ const App: React.FC = () => {
         ctx.restore();
       }
 
-      // Sparky's Sparkling Yellow Circle Ability Visual
       if (sparkyPulseTimerRef.current > 0) {
         ctx.save();
         ctx.translate(posRef.current.x, posRef.current.y);
@@ -554,7 +585,6 @@ const App: React.FC = () => {
         const currentRadius = 600 * progress;
         const alpha = 0.5 * (1 - progress);
         
-        // The main glowing circle
         ctx.beginPath();
         ctx.arc(0, 0, currentRadius, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(250, 204, 21, ${alpha * 0.2})`;
@@ -563,7 +593,6 @@ const App: React.FC = () => {
         ctx.lineWidth = 10;
         ctx.stroke();
 
-        // Sparkles inside
         for (let i = 0; i < 20; i++) {
           const sparkAngle = Math.random() * Math.PI * 2;
           const sparkDist = Math.random() * currentRadius;

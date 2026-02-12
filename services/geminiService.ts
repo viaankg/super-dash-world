@@ -1,9 +1,9 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export async function getVictoryMessage(playerName: string, timeTaken: number, score: number): Promise<string> {
+  // Create a new GoogleGenAI instance right before making an API call to ensure it always uses the most up-to-date API key.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
