@@ -19,6 +19,8 @@ export interface Character {
   speed: number;
   handling: number;
   boostPower: number;
+  abilityName: string;
+  abilityDescription: string;
 }
 
 export interface Coin {

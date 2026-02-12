@@ -6,12 +6,53 @@ export const INITIAL_COIN_COUNT = 50;
 export const MAX_BOOST = 100;
 export const BOOST_CONSUMPTION_RATE = 0.5;
 export const BOOST_RECHARGE_RATE = 0.1;
+export const ABILITY_COOLDOWN = 20000; // 20 seconds
 
 export const CHARACTERS: Character[] = [
-  { id: 'dash', name: 'Dashing Dino', color: '#4ADE80', secondaryColor: '#166534', speed: 1.1, handling: 0.9, boostPower: 1.2 },
-  { id: 'bolt', name: 'Bolt Bunny', color: '#60A5FA', secondaryColor: '#1E40AF', speed: 0.9, handling: 1.2, boostPower: 1.0 },
-  { id: 'sparky', name: 'Sparky Squirrel', color: '#FACC15', secondaryColor: '#854D0E', speed: 1.0, handling: 1.0, boostPower: 1.1 },
-  { id: 'fizz', name: 'Fizz Fox', color: '#FB923C', secondaryColor: '#9A3412', speed: 1.2, handling: 0.8, boostPower: 0.9 },
+  { 
+    id: 'dash', 
+    name: 'Dashing Dino', 
+    color: '#4ADE80', 
+    secondaryColor: '#166534', 
+    speed: 1.1, 
+    handling: 0.9, 
+    boostPower: 1.2,
+    abilityName: 'Nitro Burst',
+    abilityDescription: 'Instantly refills all Nitro and grants 3s of Invincibility.'
+  },
+  { 
+    id: 'bolt', 
+    name: 'Bolt Bunny', 
+    color: '#60A5FA', 
+    secondaryColor: '#1E40AF', 
+    speed: 0.9, 
+    handling: 1.2, 
+    boostPower: 1.0,
+    abilityName: 'Phase Leap',
+    abilityDescription: 'Become ghostly and drive through any obstacle or wall for 5 seconds.'
+  },
+  { 
+    id: 'sparky', 
+    name: 'Sparky Squirrel', 
+    color: '#FACC15', 
+    secondaryColor: '#854D0E', 
+    speed: 1.0, 
+    handling: 1.0, 
+    boostPower: 1.1,
+    abilityName: 'Electric Pulse',
+    abilityDescription: 'Instantly pulls in all coins within a massive radius.'
+  },
+  { 
+    id: 'fizz', 
+    name: 'Fizz Fox', 
+    color: '#FB923C', 
+    secondaryColor: '#9A3412', 
+    speed: 1.2, 
+    handling: 0.8, 
+    boostPower: 0.9,
+    abilityName: 'Turbo AI',
+    abilityDescription: 'Activates AI Auto-Pilot and Speed Boost for 6 seconds.'
+  },
 ];
 
 export const OBSTACLES: Obstacle[] = [];

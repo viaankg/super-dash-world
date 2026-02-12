@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GameState, Vector2D, Character, Coin, PlayerScore, PowerUp, PowerUpType } from './types';
-import { WORLD_SIZE, INITIAL_COIN_COUNT, MAX_BOOST, BOOST_CONSUMPTION_RATE, BOOST_RECHARGE_RATE, OBSTACLES } from './constants';
+import { WORLD_SIZE, INITIAL_COIN_COUNT, MAX_BOOST, BOOST_CONSUMPTION_RATE, BOOST_RECHARGE_RATE, OBSTACLES, ABILITY_COOLDOWN } from './constants';
 import StartScreen from './components/StartScreen';
 import HUD from './components/HUD';
 import WinScreen from './components/WinScreen';
@@ -25,7 +25,9 @@ const App: React.FC = () => {
     magnetLeft: 0,
     autoDriveLeft: 0,
     hyperdriveLeft: 0,
-    hasShield: false
+    hasShield: false,
+    abilityCooldown: 0,
+    maxAbilityCooldown: ABILITY_COOLDOWN
   });
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -50,13 +52,16 @@ const App: React.FC = () => {
   const hasShieldRef = useRef<boolean>(false);
   
   const canRollHyperdriveRef = useRef<boolean>(false);
+  const abilityCooldownRef = useRef<number>(0);
+  const isPhasingRef = useRef<boolean>(false);
+  const sparkyPulseTimerRef = useRef<number>(0); // New timer for Sparky's visual effect
 
   const tutorialMessages = [
     "Welcome Racer! Use WASD or Arrows to drive around the map.",
     "Great! Now hold SHIFT to use your NITRO BOOST! Watch the blue bar at the bottom.",
     "Collect YELLOW COINS to gain a 5s SPEED BOOST and become INVINCIBLE to edges!",
     "POWER-UPS like Magnets and Shields give you special abilities. Try the ones nearby!",
-    "PRO TIP: Combining Coin Boost + Speed Boost + Shift Nitro has a 30% chance to trigger HYPERDRIVE!",
+    "PRO TIP: Each character has a UNIQUE ABILITY! Press 'Q' or click the Star to use it!",
     "Ready to race? Collect ALL coins as fast as you can to win!"
   ];
 
@@ -116,6 +121,40 @@ const App: React.FC = () => {
     setTimeout(() => setCutscene(prev => ({ ...prev, active: false })), 1500);
   };
 
+  const handleUseAbility = useCallback(() => {
+    if (abilityCooldownRef.current > 0 || !player.character) return;
+
+    const char = player.character;
+    abilityCooldownRef.current = ABILITY_COOLDOWN;
+
+    if (char.id === 'dash') {
+      boostRef.current = MAX_BOOST;
+      coinBoostTimerRef.current = 3000;
+      speedBoostTimerRef.current = 3000;
+    } else if (char.id === 'bolt') {
+      isPhasingRef.current = true;
+      setTimeout(() => { isPhasingRef.current = false; }, 5000);
+    } else if (char.id === 'sparky') {
+      const radius = 600;
+      sparkyPulseTimerRef.current = 800; // Trigger visual for 0.8s
+      coinsRef.current.forEach(coin => {
+        if (!coin.collected) {
+          const dx = posRef.current.x - coin.x;
+          const dy = posRef.current.y - coin.y;
+          if (Math.sqrt(dx*dx + dy*dy) < radius) {
+            coin.collected = true;
+            boostRef.current = Math.min(MAX_BOOST, boostRef.current + 5);
+          }
+        }
+      });
+      setSpawnAlert("COIN PULSE!");
+      setTimeout(() => setSpawnAlert(null), 1000);
+    } else if (char.id === 'fizz') {
+      autoDriveTimerRef.current = 6000;
+      speedBoostTimerRef.current = 6000;
+    }
+  }, [player.character]);
+
   const handleStart = (name: string, char: Character) => {
     setPlayer({ name, character: char });
     setGameState(GameState.TUTORIAL);
@@ -125,9 +164,11 @@ const App: React.FC = () => {
     angleRef.current = -Math.PI / 2;
     boostRef.current = MAX_BOOST; 
     powerUpsRef.current = [];
+    abilityCooldownRef.current = 0;
+    isPhasingRef.current = false;
+    sparkyPulseTimerRef.current = 0;
     coinsRef.current = [{ id: 999, x: WORLD_SIZE/2 + 400, y: WORLD_SIZE/2, collected: false }];
     
-    // Spawn nearby demo powerups for tutorial context
     spawnPowerUp('speed', true);
     spawnPowerUp('magnet', true);
     spawnPowerUp('shield', true);
@@ -149,6 +190,9 @@ const App: React.FC = () => {
     hyperdriveTimerRef.current = 0;
     hasShieldRef.current = false;
     canRollHyperdriveRef.current = false;
+    abilityCooldownRef.current = 0;
+    isPhasingRef.current = false;
+    sparkyPulseTimerRef.current = 0;
     powerUpsRef.current = [];
     setPenaltyMessage(false);
     setSpawnAlert(null);
@@ -175,7 +219,9 @@ const App: React.FC = () => {
       magnetLeft: 0,
       autoDriveLeft: 0,
       hyperdriveLeft: 0,
-      hasShield: false
+      hasShield: false,
+      abilityCooldown: 0,
+      maxAbilityCooldown: ABILITY_COOLDOWN
     });
     setGameState(GameState.PLAYING);
   }, [spawnPowerUp]);
@@ -186,7 +232,12 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => keysRef.current[e.code] = true;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      keysRef.current[e.code] = true;
+      if (e.code === 'KeyQ' && gameState === GameState.PLAYING) {
+        handleUseAbility();
+      }
+    };
     const handleKeyUp = (e: KeyboardEvent) => keysRef.current[e.code] = false;
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -194,7 +245,7 @@ const App: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [gameState, handleUseAbility]);
 
   useEffect(() => {
     if ((gameState !== GameState.PLAYING && gameState !== GameState.TUTORIAL) || !player.character) return;
@@ -207,9 +258,14 @@ const App: React.FC = () => {
       const now = Date.now();
       if (gameState === GameState.PLAYING) {
         timerRef.current += dt / 1000;
+        if (abilityCooldownRef.current > 0) {
+          abilityCooldownRef.current = Math.max(0, abilityCooldownRef.current - dt);
+        }
+        if (sparkyPulseTimerRef.current > 0) {
+          sparkyPulseTimerRef.current = Math.max(0, sparkyPulseTimerRef.current - dt);
+        }
       }
 
-      // Timer updates
       if (coinBoostTimerRef.current > 0) coinBoostTimerRef.current = Math.max(0, coinBoostTimerRef.current - dt);
       if (speedBoostTimerRef.current > 0) speedBoostTimerRef.current = Math.max(0, speedBoostTimerRef.current - dt);
       if (magnetTimerRef.current > 0) magnetTimerRef.current = Math.max(0, magnetTimerRef.current - dt);
@@ -231,7 +287,6 @@ const App: React.FC = () => {
         }
       }
 
-      // Automatic Spawning only in PLAYING state
       if (gameState === GameState.PLAYING) {
         if (now - lastPowerUpSpawnRef.current > 7000) {
           spawnPowerUp();
@@ -316,7 +371,7 @@ const App: React.FC = () => {
       posRef.current.x += Math.cos(angleRef.current) * velRef.current;
       posRef.current.y += Math.sin(angleRef.current) * velRef.current;
 
-      if (hyperdriveTimerRef.current <= 0) {
+      if (hyperdriveTimerRef.current <= 0 && !isPhasingRef.current) {
         const playerRadius = 15;
         OBSTACLES.forEach(obs => {
           const left = obs.x - playerRadius;
@@ -342,12 +397,12 @@ const App: React.FC = () => {
 
       const inHyperdrive = hyperdriveTimerRef.current > 0;
       let hitBoundary = false;
-      if (posRef.current.x < 0) { if (inHyperdrive) posRef.current.x = WORLD_SIZE - 40; else { posRef.current.x = 10; hitBoundary = true; } }
-      if (posRef.current.x > WORLD_SIZE) { if (inHyperdrive) posRef.current.x = 40; else { posRef.current.x = WORLD_SIZE - 10; hitBoundary = true; } }
-      if (posRef.current.y < 0) { if (inHyperdrive) posRef.current.y = WORLD_SIZE - 40; else { posRef.current.y = 10; hitBoundary = true; } }
-      if (posRef.current.y > WORLD_SIZE) { if (inHyperdrive) posRef.current.y = 40; else { posRef.current.y = WORLD_SIZE - 10; hitBoundary = true; } }
+      if (posRef.current.x < 0) { if (inHyperdrive || isPhasingRef.current) posRef.current.x = WORLD_SIZE - 40; else { posRef.current.x = 10; hitBoundary = true; } }
+      if (posRef.current.x > WORLD_SIZE) { if (inHyperdrive || isPhasingRef.current) posRef.current.x = 40; else { posRef.current.x = WORLD_SIZE - 10; hitBoundary = true; } }
+      if (posRef.current.y < 0) { if (inHyperdrive || isPhasingRef.current) posRef.current.y = WORLD_SIZE - 40; else { posRef.current.y = 10; hitBoundary = true; } }
+      if (posRef.current.y > WORLD_SIZE) { if (inHyperdrive || isPhasingRef.current) posRef.current.y = 40; else { posRef.current.y = WORLD_SIZE - 10; hitBoundary = true; } }
 
-      if (hitBoundary) {
+      if (hitBoundary && !isPhasingRef.current) {
         const isInvincible = coinBoostTimerRef.current > 0 || autoDriveTimerRef.current > 0;
         if (!isInvincible) {
           if (hasShieldRef.current) {
@@ -367,10 +422,7 @@ const App: React.FC = () => {
         const dx = posRef.current.x - pu.x;
         const dy = posRef.current.y - pu.y;
         if (Math.sqrt(dx*dx + dy*dy) < 40) {
-          if (pu.type === 'speed') {
-            speedBoostTimerRef.current = 5000;
-            canRollHyperdriveRef.current = true;
-          }
+          if (pu.type === 'speed') { speedBoostTimerRef.current = 5000; canRollHyperdriveRef.current = true; }
           if (pu.type === 'shield') hasShieldRef.current = true;
           if (pu.type === 'magnet') magnetTimerRef.current = 10000;
           if (pu.type === 'autoDrive') autoDriveTimerRef.current = 10000;
@@ -379,7 +431,6 @@ const App: React.FC = () => {
         return true;
       });
 
-      // Enhanced magnet radius (1.5x of 150 = 225) if in hyperdrive
       const collectionRadius = hyperdriveTimerRef.current > 0 ? 225 : (magnetTimerRef.current > 0 ? 150 : 40);
       let collectedCount = 0;
       coinsRef.current.forEach(coin => {
@@ -407,7 +458,9 @@ const App: React.FC = () => {
           magnetLeft: magnetTimerRef.current / 1000,
           autoDriveLeft: autoDriveTimerRef.current / 1000,
           hyperdriveLeft: hyperdriveTimerRef.current / 1000,
-          hasShield: hasShieldRef.current
+          hasShield: hasShieldRef.current,
+          abilityCooldown: abilityCooldownRef.current,
+          maxAbilityCooldown: ABILITY_COOLDOWN
         });
       }
 
@@ -430,7 +483,6 @@ const App: React.FC = () => {
       ctx.save();
       ctx.translate(-camX, -camY);
       
-      // Background Grid
       ctx.fillStyle = '#86efac';
       ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
       ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 10; ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
@@ -440,15 +492,13 @@ const App: React.FC = () => {
         ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(WORLD_SIZE, i); ctx.stroke();
       }
 
-      // Obstacles
       OBSTACLES.forEach(obs => {
         ctx.fillStyle = obs.type === 'tree' ? '#166534' : '#525252';
-        if (hyperdriveTimerRef.current > 0) ctx.globalAlpha = 0.3;
+        if (hyperdriveTimerRef.current > 0 || isPhasingRef.current) ctx.globalAlpha = 0.3;
         ctx.beginPath(); ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 10); ctx.fill();
         ctx.globalAlpha = 1.0;
       });
 
-      // PowerUps on Map
       powerUpsRef.current.forEach(pu => {
         ctx.save(); ctx.translate(pu.x, pu.y);
         ctx.scale(1 + Math.sin(Date.now() / 200) * 0.1, 1 + Math.sin(Date.now() / 200) * 0.1);
@@ -462,7 +512,6 @@ const App: React.FC = () => {
         ctx.restore();
       });
 
-      // Coins
       coinsRef.current.forEach(coin => {
         if (!coin.collected) {
           ctx.fillStyle = '#facc15'; ctx.strokeStyle = '#854d0e'; ctx.lineWidth = 3;
@@ -470,7 +519,6 @@ const App: React.FC = () => {
         }
       });
 
-      // Visual Effects (Trails, Magnet Aura, Shield)
       const isBoosting = (keysRef.current['ShiftLeft'] || keysRef.current['ShiftRight']) && boostRef.current > 0;
       if (speedBoostTimerRef.current > 0 || coinBoostTimerRef.current > 0 || autoDriveTimerRef.current > 0 || hyperdriveTimerRef.current > 0 || isBoosting) {
         const isHyper = hyperdriveTimerRef.current > 0;
@@ -484,7 +532,6 @@ const App: React.FC = () => {
         }
       }
 
-      // Magnet Aura (reflects current collection radius)
       if (magnetTimerRef.current > 0 || hyperdriveTimerRef.current > 0) {
         ctx.save();
         ctx.translate(posRef.current.x, posRef.current.y);
@@ -499,30 +546,49 @@ const App: React.FC = () => {
         ctx.restore();
       }
 
-      // Player Character
-      ctx.save(); ctx.translate(posRef.current.x, posRef.current.y); ctx.rotate(angleRef.current);
-      
-      // Hyperdrive Glow
-      if (hyperdriveTimerRef.current > 0) {
-        ctx.shadowBlur = 40;
-        ctx.shadowColor = 'yellow';
+      // Sparky's Sparkling Yellow Circle Ability Visual
+      if (sparkyPulseTimerRef.current > 0) {
+        ctx.save();
+        ctx.translate(posRef.current.x, posRef.current.y);
+        const progress = (800 - sparkyPulseTimerRef.current) / 800;
+        const currentRadius = 600 * progress;
+        const alpha = 0.5 * (1 - progress);
+        
+        // The main glowing circle
+        ctx.beginPath();
+        ctx.arc(0, 0, currentRadius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(250, 204, 21, ${alpha * 0.2})`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(250, 204, 21, ${alpha})`;
+        ctx.lineWidth = 10;
+        ctx.stroke();
+
+        // Sparkles inside
+        for (let i = 0; i < 20; i++) {
+          const sparkAngle = Math.random() * Math.PI * 2;
+          const sparkDist = Math.random() * currentRadius;
+          const sx = Math.cos(sparkAngle) * sparkDist;
+          const sy = Math.sin(sparkAngle) * sparkDist;
+          ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 1.5})`;
+          ctx.beginPath();
+          const size = Math.random() * 5 + 2;
+          ctx.arc(sx, sy, size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
       }
 
-      // Body
+      ctx.save(); ctx.translate(posRef.current.x, posRef.current.y); ctx.rotate(angleRef.current);
+      if (isPhasingRef.current) { ctx.globalAlpha = 0.5; ctx.shadowBlur = 15; ctx.shadowColor = '#60A5FA'; }
+      if (hyperdriveTimerRef.current > 0) { ctx.shadowBlur = 40; ctx.shadowColor = 'yellow'; }
       ctx.fillStyle = hyperdriveTimerRef.current > 0 ? '#fbbf24' : (autoDriveTimerRef.current > 0 ? '#ef4444' : char.color);
       ctx.beginPath(); ctx.roundRect(-25, -15, 50, 30, 8); ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3; ctx.stroke();
       
-      // NEW: Windshield Window (positioned toward the front - positive X)
       ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.beginPath();
-      ctx.roundRect(5, -11, 12, 22, 4);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      ctx.beginPath(); ctx.roundRect(5, -11, 12, 22, 4); ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; ctx.lineWidth = 1; ctx.stroke();
 
-      // Wind/Speed Lines
       if (speedBoostTimerRef.current > 0 || hyperdriveTimerRef.current > 0) {
         ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(25, -10); ctx.lineTo(40, -10); ctx.stroke();
@@ -530,21 +596,13 @@ const App: React.FC = () => {
       }
       ctx.restore();
 
-      // Shield Effect
       if (hasShieldRef.current) {
-        ctx.save();
-        ctx.translate(posRef.current.x, posRef.current.y);
-        ctx.strokeStyle = 'rgba(168, 85, 247, 0.6)';
-        ctx.lineWidth = 5;
+        ctx.save(); ctx.translate(posRef.current.x, posRef.current.y);
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.6)'; ctx.lineWidth = 5;
         const shieldPulse = Math.sin(Date.now() / 100) * 5;
-        ctx.beginPath();
-        ctx.arc(0, 0, 45 + shieldPulse, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(168, 85, 247, 0.1)';
-        ctx.fill();
-        ctx.restore();
+        ctx.beginPath(); ctx.arc(0, 0, 45 + shieldPulse, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.1)'; ctx.fill(); ctx.restore();
       }
-
       ctx.restore();
     };
 
@@ -558,7 +616,7 @@ const App: React.FC = () => {
     };
     frameIdRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameIdRef.current);
-  }, [gameState, player.character, spawnPowerUp]);
+  }, [gameState, player.character, spawnPowerUp, handleUseAbility]);
 
   return (
     <div className={`relative w-screen h-screen overflow-hidden bg-green-200 ${cutscene.active ? 'scale-[1.08] grayscale-[0.3]' : ''} transition-all duration-300`}>
@@ -575,10 +633,7 @@ const App: React.FC = () => {
                   {tutorialMessages[tutorialStep]}
                 </p>
                 <button 
-                  onClick={() => {
-                    if (tutorialStep < tutorialMessages.length - 1) setTutorialStep(s => s + 1);
-                    else initRealGame();
-                  }}
+                  onClick={() => { if (tutorialStep < tutorialMessages.length - 1) setTutorialStep(s => s + 1); else initRealGame(); }}
                   className="bg-blue-600 hover:bg-blue-700 text-white bungee px-10 py-4 rounded-2xl text-2xl shadow-xl transition-all active:scale-95"
                 >
                   {tutorialStep < tutorialMessages.length - 1 ? "NEXT STEP!" : "GO RACING!"}
@@ -622,6 +677,10 @@ const App: React.FC = () => {
             autoDriveLeft={hudData.autoDriveLeft}
             hyperdriveLeft={hudData.hyperdriveLeft}
             hasShield={hudData.hasShield}
+            abilityCooldown={hudData.abilityCooldown}
+            maxAbilityCooldown={hudData.maxAbilityCooldown}
+            abilityName={player.character?.abilityName || 'Special Ability'}
+            onUseAbility={handleUseAbility}
           />
           
           <div className="fixed bottom-6 right-6 w-32 h-32 bg-black/30 border-2 border-white/50 backdrop-blur rounded-lg overflow-hidden pointer-events-none">

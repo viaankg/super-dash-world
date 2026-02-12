@@ -18,8 +18,8 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-3xl p-8 max-w-2xl w-full shadow-2xl border-8 border-yellow-400">
+    <div className="fixed inset-0 bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-3xl p-8 max-w-2xl w-full shadow-2xl border-8 border-yellow-400 my-8">
         <h1 className="bungee text-5xl text-center text-blue-600 mb-8 drop-shadow-md">SUPER DASH WORLD</h1>
         
         <div className="mb-8">
@@ -35,8 +35,8 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
         </div>
 
         <div className="mb-8">
-          <label className="block text-gray-700 font-bold mb-4 text-xl">Pick your character!</label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <label className="block text-gray-700 font-bold mb-4 text-xl text-center">Pick your character!</label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             {CHARACTERS.map((char) => (
               <button
                 key={char.id}
@@ -52,6 +52,14 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
                 <span className="font-bold text-sm text-center">{char.name}</span>
               </button>
             ))}
+          </div>
+
+          <div className="bg-blue-50 rounded-2xl p-4 border-4 border-blue-100 animate-in fade-in zoom-in duration-300">
+            <h3 className="bungee text-blue-600 text-lg mb-1 flex items-center gap-2">
+              <span className="bg-blue-600 text-white px-2 py-0.5 rounded text-xs">ABILITY</span>
+              {selectedChar.abilityName}
+            </h3>
+            <p className="text-blue-800 text-sm italic">{selectedChar.abilityDescription}</p>
           </div>
         </div>
 

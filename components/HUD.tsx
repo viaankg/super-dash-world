@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Timer, Trophy, Zap, AlertTriangle, RotateCcw, Shield, Magnet, Wind, Cpu, Rocket } from 'lucide-react';
+import { Timer, Trophy, Zap, AlertTriangle, RotateCcw, Shield, Magnet, Wind, Cpu, Rocket, Star } from 'lucide-react';
 
 interface HUDProps {
   time: number;
@@ -16,13 +16,20 @@ interface HUDProps {
   autoDriveLeft: number;
   hyperdriveLeft: number;
   hasShield: boolean;
+  abilityCooldown: number;
+  maxAbilityCooldown: number;
+  abilityName: string;
+  onUseAbility: () => void;
 }
 
 const HUD: React.FC<HUDProps> = ({ 
   time, coins, totalCoins, boost, maxBoost, onRespawn, showPenalty,
-  coinBoostLeft, speedBoostLeft, magnetLeft, autoDriveLeft, hyperdriveLeft, hasShield
+  coinBoostLeft, speedBoostLeft, magnetLeft, autoDriveLeft, hyperdriveLeft, hasShield,
+  abilityCooldown, maxAbilityCooldown, abilityName, onUseAbility
 }) => {
   const boostPercent = (boost / maxBoost) * 100;
+  const cooldownPercent = (abilityCooldown / maxAbilityCooldown) * 100;
+  const abilityReady = abilityCooldown <= 0;
 
   return (
     <div className="fixed inset-0 pointer-events-none p-6 select-none flex flex-col justify-between">
@@ -107,6 +114,35 @@ const HUD: React.FC<HUDProps> = ({
         </button>
       </div>
 
+      {/* Ability Button Overlay */}
+      <div className="fixed left-6 bottom-32 flex flex-col items-center gap-2 pointer-events-auto">
+         <button
+          onClick={onUseAbility}
+          disabled={!abilityReady}
+          className={`group relative p-6 rounded-full border-4 shadow-2xl transition-all transform active:scale-90 ${
+            abilityReady 
+              ? 'bg-yellow-400 border-white hover:bg-yellow-500 hover:scale-110 cursor-pointer animate-pulse' 
+              : 'bg-gray-400 border-gray-200 cursor-not-allowed grayscale'
+          }`}
+        >
+          <Star className={`w-12 h-12 ${abilityReady ? 'text-white' : 'text-gray-200'}`} />
+          
+          {/* Circular Cooldown overlay */}
+          {!abilityReady && (
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 animate-spin opacity-50" />
+          )}
+
+          {/* Tooltip on hover */}
+          <div className="absolute left-full ml-4 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 p-3 rounded-xl border-4 border-yellow-400 w-48 pointer-events-none">
+            <span className="bungee text-yellow-600 block text-sm">{abilityName}</span>
+            <span className="text-[10px] font-bold text-gray-500">(Q Key)</span>
+          </div>
+        </button>
+        <span className={`bungee text-sm drop-shadow ${abilityReady ? 'text-yellow-400' : 'text-gray-400'}`}>
+          {abilityReady ? 'READY!' : `${(abilityCooldown / 1000).toFixed(0)}s`}
+        </span>
+      </div>
+
       {/* Bottom HUD */}
       <div className="flex flex-col items-center gap-4">
         <div className="w-64 bg-gray-200 h-8 rounded-full border-4 border-white shadow-lg overflow-hidden relative">
@@ -122,7 +158,7 @@ const HUD: React.FC<HUDProps> = ({
         </div>
         
         <div className="text-white bg-black/40 px-4 py-2 rounded-full backdrop-blur-sm text-sm font-bold">
-          WASD or Arrows to Drive
+          WASD/Arrows to Drive • Q for Special Ability
         </div>
       </div>
     </div>
