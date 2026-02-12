@@ -114,8 +114,8 @@ const HUD: React.FC<HUDProps> = ({
         </button>
       </div>
 
-      {/* Ability Button Overlay */}
-      <div className="fixed left-6 bottom-32 flex flex-col items-center gap-2 pointer-events-auto">
+      {/* Ability Button Overlay - Adjusted for mobile position */}
+      <div className="fixed left-6 bottom-48 sm:bottom-32 flex flex-col items-center gap-2 pointer-events-auto">
          <button
           onClick={onUseAbility}
           disabled={!abilityReady}
@@ -133,7 +133,7 @@ const HUD: React.FC<HUDProps> = ({
           )}
 
           {/* Tooltip on hover */}
-          <div className="absolute left-full ml-4 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 p-3 rounded-xl border-4 border-yellow-400 w-48 pointer-events-none">
+          <div className="absolute left-full ml-4 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 p-3 rounded-xl border-4 border-yellow-400 w-48 pointer-events-none hidden sm:block">
             <span className="bungee text-yellow-600 block text-sm">{abilityName}</span>
             <span className="text-[10px] font-bold text-gray-500">(Q Key)</span>
           </div>
@@ -144,7 +144,7 @@ const HUD: React.FC<HUDProps> = ({
       </div>
 
       {/* Bottom HUD */}
-      <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col items-center gap-4 mb-2">
         <div className="w-64 bg-gray-200 h-8 rounded-full border-4 border-white shadow-lg overflow-hidden relative">
           <div 
             className={`h-full transition-all duration-75 ease-out flex items-center justify-end pr-2 ${hyperdriveLeft > 0 ? 'bg-yellow-400' : 'bg-blue-500'}`}
@@ -153,11 +153,11 @@ const HUD: React.FC<HUDProps> = ({
             {boostPercent > 10 && <Zap className="text-white w-4 h-4" />}
           </div>
           <span className="absolute inset-0 flex items-center justify-center text-xs font-black text-gray-700 uppercase drop-shadow">
-            {hyperdriveLeft > 0 ? 'HYPERDRIVE ACTIVE!' : 'BOOST! (SHIFT)'}
+            {hyperdriveLeft > 0 ? 'HYPERDRIVE ACTIVE!' : 'BOOST!'}
           </span>
         </div>
         
-        <div className="text-white bg-black/40 px-4 py-2 rounded-full backdrop-blur-sm text-sm font-bold">
+        <div className="text-white bg-black/40 px-4 py-2 rounded-full backdrop-blur-sm text-sm font-bold hidden sm:block">
           WASD/Arrows to Drive • Q for Special Ability
         </div>
       </div>

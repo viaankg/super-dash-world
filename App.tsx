@@ -5,6 +5,7 @@ import { WORLD_SIZE, INITIAL_COIN_COUNT, MAX_BOOST, BOOST_CONSUMPTION_RATE, BOOS
 import StartScreen from './components/StartScreen';
 import HUD from './components/HUD';
 import WinScreen from './components/WinScreen';
+import VirtualControls from './components/VirtualControls';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.START);
@@ -14,6 +15,7 @@ const App: React.FC = () => {
   const [spawnAlert, setSpawnAlert] = useState<string | null>(null);
   const [cutscene, setCutscene] = useState<{ type: 'hyper' | 'stop'; active: boolean }>({ type: 'hyper', active: false });
   const [tutorialStep, setTutorialStep] = useState(0);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
 
   const [hudData, setHudData] = useState({
     time: 0,
@@ -64,6 +66,11 @@ const App: React.FC = () => {
     "PRO TIP: Each character has a UNIQUE ABILITY! Press 'Q' or click the Star to use it!",
     "Ready to race? Collect ALL coins as fast as you can to win!"
   ];
+
+  // Detect touch device
+  useEffect(() => {
+    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
 
   const isPointInObstacle = (x: number, y: number, padding: number = 0) => {
     return OBSTACLES.some(obs => (
@@ -231,6 +238,10 @@ const App: React.FC = () => {
     setGameState(GameState.START);
   }, []);
 
+  const handleVirtualInput = (key: string, active: boolean) => {
+    keysRef.current[key] = active;
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       keysRef.current[e.code] = true;
@@ -279,7 +290,7 @@ const App: React.FC = () => {
         triggerCutscene('stop');
       }
 
-      const isHoldingBoost = keysRef.current['ShiftLeft'] || keysRef.current['ShiftRight'];
+      const isHoldingBoost = keysRef.current['ShiftLeft'] || keysRef.current['ShiftRight'] || keysRef.current['Shift'];
       if (canRollHyperdriveRef.current && coinBoostTimerRef.current > 0 && speedBoostTimerRef.current > 0 && isHoldingBoost && boostRef.current > 0) {
         canRollHyperdriveRef.current = false; 
         if (Math.random() < 0.3) {
@@ -546,7 +557,7 @@ const App: React.FC = () => {
         }
       });
 
-      const isBoosting = (keysRef.current['ShiftLeft'] || keysRef.current['ShiftRight']) && boostRef.current > 0;
+      const isBoosting = (keysRef.current['ShiftLeft'] || keysRef.current['ShiftRight'] || keysRef.current['Shift']) && boostRef.current > 0;
       if (speedBoostTimerRef.current > 0 || coinBoostTimerRef.current > 0 || autoDriveTimerRef.current > 0 || hyperdriveTimerRef.current > 0 || isBoosting) {
         const isHyper = hyperdriveTimerRef.current > 0;
         const trailColor = isHyper ? 'rgba(255, 255, 0, 0.5)' : (isBoosting ? 'rgba(255, 100, 0, 0.4)' : 'rgba(59, 130, 246, 0.3)');
@@ -706,6 +717,10 @@ const App: React.FC = () => {
             abilityName={player.character?.abilityName || 'Special Ability'}
             onUseAbility={handleUseAbility}
           />
+
+          {isTouchDevice && gameState === GameState.PLAYING && (
+            <VirtualControls onInput={handleVirtualInput} />
+          )}
           
           <div className="fixed bottom-6 right-6 w-32 h-32 bg-black/30 border-2 border-white/50 backdrop-blur rounded-lg overflow-hidden pointer-events-none">
             <div className="absolute w-2 h-2 bg-red-500 rounded-full border border-white"
