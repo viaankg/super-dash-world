@@ -347,7 +347,7 @@ const App: React.FC = () => {
       const isHoldingBoost = keysRef.current['ShiftLeft'] || keysRef.current['ShiftRight'] || keysRef.current['Shift'];
       if (canRollHyperdriveRef.current && coinBoostTimerRef.current > 0 && speedBoostTimerRef.current > 0 && isHoldingBoost && boostRef.current > 0) {
         canRollHyperdriveRef.current = false; 
-        if (Math.random() < 0.3) {
+        if (Math.random() < 0.5) {
           hyperdriveTimerRef.current = 15000;
           triggerCutscene('hyper');
         }
@@ -666,32 +666,32 @@ const App: React.FC = () => {
         ctx.arc(0, 0, currentRadius, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(250, 204, 21, ${alpha * 0.8})`;
         ctx.lineWidth = 15;
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#FACC15';
         ctx.stroke();
 
         ctx.fillStyle = `rgba(250, 204, 21, ${alpha * 0.1})`;
         ctx.fill();
+        ctx.restore();
+      }
 
-        for (let i = 0; i < 12; i++) {
-          const sparkAngle = (i / 12) * Math.PI * 2 + (progress * 5); 
-          const sx = Math.cos(sparkAngle) * currentRadius;
-          const sy = Math.sin(sparkAngle) * currentRadius;
-          
-          ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-          ctx.beginPath();
-          ctx.arc(sx, sy, 8, 0, Math.PI * 2);
-          ctx.fill();
-          
-          ctx.strokeStyle = `rgba(250, 204, 21, ${alpha})`;
-          ctx.lineWidth = 4;
-          ctx.beginPath();
-          ctx.moveTo(sx - 15, sy);
-          ctx.lineTo(sx + 15, sy);
-          ctx.moveTo(sx, sy - 15);
-          ctx.lineTo(sx, sy + 15);
-          ctx.stroke();
-        }
+      // Magnet/Hyperdrive field Ring
+      if (magnetTimerRef.current > 0 || hyperdriveTimerRef.current > 0) {
+        ctx.save();
+        ctx.translate(posRef.current.x, posRef.current.y);
+        ctx.strokeStyle = hyperdriveTimerRef.current > 0 ? 'rgba(255, 255, 0, 0.6)' : 'rgba(34, 197, 94, 0.6)';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 15]);
+        const pulse = Math.sin(Date.now() / 150) * 15;
+        const activeRadius = hyperdriveTimerRef.current > 0 ? 225 : 150;
+        ctx.beginPath();
+        ctx.arc(0, 0, activeRadius + pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Add subtle glow
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = hyperdriveTimerRef.current > 0 ? 'yellow' : '#22c55e';
+        ctx.beginPath();
+        ctx.arc(0, 0, activeRadius + pulse, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
       }
 
@@ -748,19 +748,6 @@ const App: React.FC = () => {
     <div className={`relative w-screen h-screen overflow-hidden bg-green-200 ${cutscene.active ? 'scale-[1.08] grayscale-[0.3]' : ''} transition-all duration-300`}>
       {gameState === GameState.START && <StartScreen onStart={handleStart} />}
       
-      {cutscene.active && (
-        <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-[999] bg-black/10 backdrop-blur-[2px] animate-pulse">
-          <div className="text-center">
-            <h2 className={`bungee text-8xl sm:text-9xl italic drop-shadow-2xl ${cutscene.type === 'hyper' ? 'text-yellow-400' : 'text-red-500'}`}>
-              {cutscene.type === 'hyper' ? 'HYPERDRIVE!' : 'EXHAUSTED!'}
-            </h2>
-            <p className="bungee text-white text-3xl sm:text-4xl mt-6 drop-shadow">
-              {cutscene.type === 'hyper' ? '200% VELOCITY ENGAGED' : 'SYSTEM COOLING DOWN'}
-            </p>
-          </div>
-        </div>
-      )}
-
       {(gameState === GameState.PLAYING || gameState === GameState.TUTORIAL) && (
         <>
           <canvas ref={canvasRef} className="block w-full h-full" />
@@ -836,7 +823,6 @@ const App: React.FC = () => {
                     >
                         <MapPin className="text-red-600 w-full h-full fill-red-600" />
                     </div>
-                    {/* Visual 7x7 target area guide */}
                     <div className="absolute border-4 border-purple-500 bg-purple-500/10 pointer-events-none transition-opacity duration-150 -translate-x-1/2 -translate-y-1/2"
                         style={{
                             left: `${teleportCursorPos.x}%`,
@@ -891,6 +877,20 @@ const App: React.FC = () => {
       
       {gameState === GameState.WIN && score && (
         <WinScreen score={score} onRestart={() => setGameState(GameState.START)} />
+      )}
+
+      {/* FIXED CUTSCENE OVERLAY - ALWAYS ON TOP */}
+      {cutscene.active && (
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-[9999] bg-black/20 backdrop-blur-sm animate-pulse">
+          <div className="text-center p-12 rounded-full">
+            <h2 className={`bungee text-8xl sm:text-9xl italic drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)] ${cutscene.type === 'hyper' ? 'text-yellow-400' : 'text-red-500'}`}>
+              {cutscene.type === 'hyper' ? 'HYPERDRIVE!' : 'EXHAUSTED!'}
+            </h2>
+            <p className="bungee text-white text-3xl sm:text-4xl mt-6 drop-shadow-lg">
+              {cutscene.type === 'hyper' ? '200% VELOCITY ENGAGED' : 'SYSTEM COOLING DOWN'}
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

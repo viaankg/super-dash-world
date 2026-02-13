@@ -62,7 +62,7 @@ export const CHARACTERS: Character[] = [
     handling: 1.0,
     boostPower: 1.0,
     abilityName: 'Chrono-Teleport',
-    abilityDescription: 'Open a map, teleport anywhere, and collect all coins in a 4x4 sector!',
+    abilityDescription: 'Open a map, teleport anywhere, and collect all coins in a 7x7 sector!',
     isSecret: true
   }
 ];
