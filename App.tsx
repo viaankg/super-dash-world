@@ -6,6 +6,9 @@ import StartScreen from './components/StartScreen';
 import HUD from './components/HUD';
 import WinScreen from './components/WinScreen';
 import VirtualControls from './components/VirtualControls';
+import { MapPin } from 'lucide-react';
+
+const SECTOR_SIZE = 700; // 7x7 grid where each unit is 100 world units
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.START);
@@ -16,18 +19,22 @@ const App: React.FC = () => {
   const [cutscene, setCutscene] = useState<{ type: 'hyper' | 'stop'; active: boolean }>({ type: 'hyper', active: false });
   const [tutorialStep, setTutorialStep] = useState(0);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [showTeleportMap, setShowTeleportMap] = useState(false);
+  const [teleportCursorPos, setTeleportCursorPos] = useState({ x: 50, y: 50 });
 
   const [hudData, setHudData] = useState({
     time: 0,
     coinsCollected: 0,
     totalCoins: INITIAL_COIN_COUNT,
     boost: MAX_BOOST,
+    maxBoost: MAX_BOOST,
     coinBoostLeft: 0,
     speedBoostLeft: 0,
     magnetLeft: 0,
     autoDriveLeft: 0,
     hyperdriveLeft: 0,
     hasShield: false,
+    hasSeeThrough: false,
     abilityCooldown: 0,
     maxAbilityCooldown: ABILITY_COOLDOWN
   });
@@ -52,6 +59,8 @@ const App: React.FC = () => {
   const autoDriveTimerRef = useRef<number>(0);
   const hyperdriveTimerRef = useRef<number>(0);
   const hasShieldRef = useRef<boolean>(false);
+  const hasSeeThroughRef = useRef<boolean>(false);
+  const isCurrentlyPassingThroughRef = useRef<boolean>(false);
   
   const canRollHyperdriveRef = useRef<boolean>(false);
   const abilityCooldownRef = useRef<number>(0);
@@ -67,7 +76,6 @@ const App: React.FC = () => {
     "Ready to race? Collect ALL coins as fast as you can to win!"
   ];
 
-  // Detect touch device
   useEffect(() => {
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
   }, []);
@@ -101,7 +109,7 @@ const App: React.FC = () => {
         let type: PowerUpType;
         if (forceType) type = forceType;
         else {
-          const types: PowerUpType[] = ['speed', 'shield', 'magnet'];
+          const types: PowerUpType[] = ['speed', 'shield', 'magnet', 'seeThrough'];
           type = types[Math.floor(Math.random() * types.length)];
         }
         
@@ -129,19 +137,21 @@ const App: React.FC = () => {
   };
 
   const handleUseAbility = useCallback(() => {
-    if (abilityCooldownRef.current > 0 || !player.character) return;
+    if (abilityCooldownRef.current > 0 || !player.character || showTeleportMap) return;
 
     const char = player.character;
-    abilityCooldownRef.current = ABILITY_COOLDOWN;
 
     if (char.id === 'dash') {
+      abilityCooldownRef.current = ABILITY_COOLDOWN;
       boostRef.current = MAX_BOOST;
       coinBoostTimerRef.current = 3000;
       speedBoostTimerRef.current = 3000;
     } else if (char.id === 'bolt') {
+      abilityCooldownRef.current = ABILITY_COOLDOWN;
       isPhasingRef.current = true;
       setTimeout(() => { isPhasingRef.current = false; }, 5000);
     } else if (char.id === 'sparky') {
+      abilityCooldownRef.current = ABILITY_COOLDOWN;
       const radius = 600;
       sparkyPulseTimerRef.current = 800; 
       coinsRef.current.forEach(coin => {
@@ -154,13 +164,44 @@ const App: React.FC = () => {
           }
         }
       });
-      setSpawnAlert("COIN PULSE!");
+      setSpawnAlert("ELECTRIC PULSE!");
       setTimeout(() => setSpawnAlert(null), 1000);
     } else if (char.id === 'fizz') {
+      abilityCooldownRef.current = ABILITY_COOLDOWN;
       autoDriveTimerRef.current = 6000;
       speedBoostTimerRef.current = 6000;
+    } else if (char.id === 'warp') {
+      setShowTeleportMap(true);
     }
-  }, [player.character]);
+  }, [player.character, showTeleportMap]);
+
+  const handleTeleportSelect = (x: number, y: number) => {
+    if (!player.character || player.character.id !== 'warp') return;
+    
+    if (isPointInObstacle(x, y, 15)) {
+        setSpawnAlert("CAN'T TELEPORT INTO WALLS!");
+        setTimeout(() => setSpawnAlert(null), 2000);
+        return;
+    }
+
+    posRef.current = { x, y };
+    velRef.current = 0;
+    
+    coinsRef.current.forEach(coin => {
+        if (!coin.collected) {
+            if (Math.abs(coin.x - x) < SECTOR_SIZE/2 && Math.abs(coin.y - y) < SECTOR_SIZE/2) {
+                coin.collected = true;
+                boostRef.current = Math.min(MAX_BOOST, boostRef.current + 5);
+            }
+        }
+    });
+
+    setSpawnAlert("CHRONO-JUMP!");
+    setTimeout(() => setSpawnAlert(null), 1000);
+    
+    abilityCooldownRef.current = ABILITY_COOLDOWN;
+    setShowTeleportMap(false);
+  };
 
   const handleStart = (name: string, char: Character) => {
     setPlayer({ name, character: char });
@@ -174,11 +215,15 @@ const App: React.FC = () => {
     abilityCooldownRef.current = 0;
     isPhasingRef.current = false;
     sparkyPulseTimerRef.current = 0;
+    hasSeeThroughRef.current = false;
+    isCurrentlyPassingThroughRef.current = false;
+    setShowTeleportMap(false);
     coinsRef.current = [{ id: 999, x: WORLD_SIZE/2 + 400, y: WORLD_SIZE/2, collected: false }];
     
     spawnPowerUp('speed', true);
     spawnPowerUp('magnet', true);
     spawnPowerUp('shield', true);
+    spawnPowerUp('seeThrough', true);
   };
 
   const initRealGame = useCallback(() => {
@@ -196,6 +241,8 @@ const App: React.FC = () => {
     autoDriveTimerRef.current = 0;
     hyperdriveTimerRef.current = 0;
     hasShieldRef.current = false;
+    hasSeeThroughRef.current = false;
+    isCurrentlyPassingThroughRef.current = false;
     canRollHyperdriveRef.current = false;
     abilityCooldownRef.current = 0;
     isPhasingRef.current = false;
@@ -204,6 +251,7 @@ const App: React.FC = () => {
     setPenaltyMessage(false);
     setSpawnAlert(null);
     setCutscene({ type: 'hyper', active: false });
+    setShowTeleportMap(false);
     
     const coins: Coin[] = [];
     let attempts = 0;
@@ -221,12 +269,14 @@ const App: React.FC = () => {
       coinsCollected: 0,
       totalCoins: INITIAL_COIN_COUNT,
       boost: MAX_BOOST,
+      maxBoost: MAX_BOOST,
       coinBoostLeft: 0,
       speedBoostLeft: 0,
       magnetLeft: 0,
       autoDriveLeft: 0,
       hyperdriveLeft: 0,
       hasShield: false,
+      hasSeeThrough: false,
       abilityCooldown: 0,
       maxAbilityCooldown: ABILITY_COOLDOWN
     });
@@ -234,7 +284,6 @@ const App: React.FC = () => {
   }, [spawnPowerUp]);
 
   const handleRespawn = useCallback(() => {
-    // Returns the player to the character selection screen
     setGameState(GameState.START);
   }, []);
 
@@ -248,6 +297,9 @@ const App: React.FC = () => {
       if (e.code === 'KeyQ' && (gameState === GameState.PLAYING || gameState === GameState.TUTORIAL)) {
         handleUseAbility();
       }
+      if (e.code === 'Escape' && showTeleportMap) {
+        setShowTeleportMap(false);
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => keysRef.current[e.code] = false;
     window.addEventListener('keydown', handleKeyDown);
@@ -256,7 +308,7 @@ const App: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [gameState, handleUseAbility]);
+  }, [gameState, handleUseAbility, showTeleportMap]);
 
   useEffect(() => {
     if ((gameState !== GameState.PLAYING && gameState !== GameState.TUTORIAL) || !player.character) return;
@@ -267,6 +319,8 @@ const App: React.FC = () => {
 
     const update = (dt: number) => {
       const now = Date.now();
+      if (showTeleportMap) return;
+
       if (gameState === GameState.PLAYING || gameState === GameState.TUTORIAL) {
         if (gameState === GameState.PLAYING) timerRef.current += dt / 1000;
         
@@ -337,14 +391,12 @@ const App: React.FC = () => {
           
           const targetAngle = Math.atan2(closest.y - posRef.current.y, closest.x - posRef.current.x);
           
-          // REFINED AI PILOT STEERING
           let angleDiff = targetAngle - angleRef.current;
           while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
           while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
           
           aiTurnWeight = angleDiff;
 
-          // OBSTACLES SCAN (Weighted avoidance)
           if (!isPhasingRef.current) {
             const scanDist = 180;
             const scanAngles = [-0.8, -0.4, 0, 0.4, 0.8];
@@ -356,19 +408,16 @@ const App: React.FC = () => {
               const checkY = posRef.current.y + Math.sin(checkAngle) * scanDist;
               
               if (isPointInObstacle(checkX, checkY, 50)) {
-                // If there's an obstacle, push the steering away from it
                 pushForce += (sa > 0 ? -0.5 : (sa < 0 ? 0.5 : (angleDiff > 0 ? -0.3 : 0.3)));
-                if (Math.abs(sa) < 0.2) aiBraking = true; // Brake if it's right in front
+                if (Math.abs(sa) < 0.2) aiBraking = true;
               }
             }
             aiTurnWeight += pushForce;
           }
 
-          // Apply turning
           const finalTurn = Math.max(-1, Math.min(1, aiTurnWeight)) * 0.2;
           angleRef.current += finalTurn;
 
-          // If turn is extreme (> 90 degrees), slow down to pivot
           if (Math.abs(angleDiff) > Math.PI / 2) {
             aiBraking = true;
           }
@@ -386,7 +435,7 @@ const App: React.FC = () => {
 
       if (isAutoDriving) {
         if (aiBraking && hyperdriveTimerRef.current <= 0) {
-          currentAccel = -accel * 0.3; // Gentle brake to pivot
+          currentAccel = -accel * 0.3;
         } else {
           currentAccel = accel; 
         }
@@ -411,26 +460,43 @@ const App: React.FC = () => {
 
       if (hyperdriveTimerRef.current <= 0 && !isPhasingRef.current) {
         const playerRadius = 15;
+        let isInsideAny = false;
         OBSTACLES.forEach(obs => {
           const left = obs.x - playerRadius;
           const right = obs.x + obs.width + playerRadius;
           const top = obs.y - playerRadius;
           const bottom = obs.y + obs.height + playerRadius;
+          
           if (posRef.current.x > left && posRef.current.x < right && posRef.current.y > top && posRef.current.y < bottom) {
-            const dl = posRef.current.x - left;
-            const dr = right - posRef.current.x;
-            const dt_side = posRef.current.y - top;
-            const db = bottom - posRef.current.y;
-            const minOverlap = Math.min(dl, dr, dt_side, db);
-            let normalAngle = 0;
-            if (minOverlap === dl) { posRef.current.x = left; normalAngle = Math.PI; }
-            else if (minOverlap === dr) { posRef.current.x = right; normalAngle = 0; }
-            else if (minOverlap === dt_side) { posRef.current.y = top; normalAngle = -Math.PI/2; }
-            else { posRef.current.y = bottom; normalAngle = Math.PI/2; }
-            velRef.current *= -0.4;
-            angleRef.current = normalAngle + (Math.random() - 0.5) * 0.8;
+            isInsideAny = true;
+            if (hasSeeThroughRef.current) {
+               if (!isCurrentlyPassingThroughRef.current) {
+                  hasSeeThroughRef.current = false;
+                  isCurrentlyPassingThroughRef.current = true;
+               }
+               return; 
+            }
+
+            if (!isCurrentlyPassingThroughRef.current) {
+              const dl = posRef.current.x - left;
+              const dr = right - posRef.current.x;
+              const dt_side = posRef.current.y - top;
+              const db = bottom - posRef.current.y;
+              const minOverlap = Math.min(dl, dr, dt_side, db);
+              let normalAngle = 0;
+              if (minOverlap === dl) { posRef.current.x = left; normalAngle = Math.PI; }
+              else if (minOverlap === dr) { posRef.current.x = right; normalAngle = 0; }
+              else if (minOverlap === dt_side) { posRef.current.y = top; normalAngle = -Math.PI/2; }
+              else { posRef.current.y = bottom; normalAngle = Math.PI/2; }
+              velRef.current *= -0.4;
+              angleRef.current = normalAngle + (Math.random() - 0.5) * 0.8;
+            }
           }
         });
+
+        if (!isInsideAny) {
+           isCurrentlyPassingThroughRef.current = false;
+        }
       }
 
       const inHyperdrive = hyperdriveTimerRef.current > 0;
@@ -464,6 +530,7 @@ const App: React.FC = () => {
           if (pu.type === 'shield') hasShieldRef.current = true;
           if (pu.type === 'magnet') magnetTimerRef.current = 10000;
           if (pu.type === 'autoDrive') autoDriveTimerRef.current = 10000;
+          if (pu.type === 'seeThrough') hasSeeThroughRef.current = true;
           return false;
         }
         return true;
@@ -491,20 +558,23 @@ const App: React.FC = () => {
           coinsCollected: collectedCount,
           totalCoins: coinsRef.current.length,
           boost: boostRef.current,
+          maxBoost: MAX_BOOST,
           coinBoostLeft: coinBoostTimerRef.current / 1000,
           speedBoostLeft: speedBoostTimerRef.current / 1000,
           magnetLeft: magnetTimerRef.current / 1000,
           autoDriveLeft: autoDriveTimerRef.current / 1000,
           hyperdriveLeft: hyperdriveTimerRef.current / 1000,
           hasShield: hasShieldRef.current,
+          hasSeeThrough: hasSeeThroughRef.current,
           abilityCooldown: abilityCooldownRef.current,
           maxAbilityCooldown: ABILITY_COOLDOWN
         });
       }
 
-      if (gameState === GameState.PLAYING && collectedCount === INITIAL_COIN_COUNT) {
+      if (gameState === GameState.PLAYING && collectedCount === coinsRef.current.length) {
         const finalTime = timerRef.current;
         const finalScore = Math.floor(Math.max(0, 10000 - finalTime * 10) + (collectedCount * 100));
+        if (finalTime <= 78) localStorage.setItem('velocity_valley_warp_unlocked', 'true');
         setScore({ name: player.name, character: player.character?.name || '', time: finalTime, score: finalScore, date: new Date().toISOString() });
         setGameState(GameState.WIN);
       }
@@ -518,9 +588,11 @@ const App: React.FC = () => {
       const camX = posRef.current.x - canvas.width / 2;
       const camY = posRef.current.y - canvas.height / 2;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
       ctx.save();
       ctx.translate(-camX, -camY);
       
+      // Ground
       ctx.fillStyle = '#86efac';
       ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
       ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 10; ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
@@ -530,26 +602,36 @@ const App: React.FC = () => {
         ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(WORLD_SIZE, i); ctx.stroke();
       }
 
+      // Obstacles
       OBSTACLES.forEach(obs => {
         ctx.fillStyle = obs.type === 'tree' ? '#166534' : '#525252';
-        if (hyperdriveTimerRef.current > 0 || isPhasingRef.current) ctx.globalAlpha = 0.3;
+        if (hyperdriveTimerRef.current > 0 || isPhasingRef.current || isCurrentlyPassingThroughRef.current) ctx.globalAlpha = 0.3;
         ctx.beginPath(); ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 10); ctx.fill();
         ctx.globalAlpha = 1.0;
       });
 
+      // Power-ups
       powerUpsRef.current.forEach(pu => {
         ctx.save(); ctx.translate(pu.x, pu.y);
         ctx.scale(1 + Math.sin(Date.now() / 200) * 0.1, 1 + Math.sin(Date.now() / 200) * 0.1);
-        ctx.fillStyle = pu.type === 'speed' ? '#3b82f6' : pu.type === 'shield' ? '#a855f7' : pu.type === 'magnet' ? '#22c55e' : '#ef4444';
+        ctx.fillStyle = pu.type === 'speed' ? '#3b82f6' : 
+                        pu.type === 'shield' ? '#a855f7' : 
+                        pu.type === 'magnet' ? '#22c55e' : 
+                        pu.type === 'seeThrough' ? '#22d3ee' : '#ef4444';
         ctx.beginPath(); ctx.arc(0, 0, 25, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = 'white'; ctx.lineWidth = 3; ctx.stroke(); ctx.fillStyle = 'white';
         if (pu.type === 'speed') { ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(-8, 2); ctx.lineTo(2, 2); ctx.lineTo(-2, 15); ctx.lineTo(8, -2); ctx.lineTo(-2, -2); ctx.closePath(); ctx.fill(); }
         else if (pu.type === 'shield') { ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(10, -8); ctx.lineTo(10, 4); ctx.quadraticCurveTo(0, 15, -10, 4); ctx.lineTo(-10, -8); ctx.closePath(); ctx.fill(); }
         else if (pu.type === 'magnet') { ctx.lineWidth = 6; ctx.strokeStyle = 'white'; ctx.beginPath(); ctx.arc(0, 2, 8, Math.PI, 0, true); ctx.moveTo(-8, 2); ctx.lineTo(-8, -10); ctx.moveTo(8, 2); ctx.lineTo(8, -10); ctx.stroke(); }
+        else if (pu.type === 'seeThrough') {
+            ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#22d3ee'; ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+        }
         else if (pu.type === 'autoDrive') { ctx.font = 'bold 20px Bungee'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('AI', 0, 0); }
         ctx.restore();
       });
 
+      // Coins
       coinsRef.current.forEach(coin => {
         if (!coin.collected) {
           ctx.fillStyle = '#facc15'; ctx.strokeStyle = '#854d0e'; ctx.lineWidth = 3;
@@ -557,6 +639,7 @@ const App: React.FC = () => {
         }
       });
 
+      // Trails
       const isBoosting = (keysRef.current['ShiftLeft'] || keysRef.current['ShiftRight'] || keysRef.current['Shift']) && boostRef.current > 0;
       if (speedBoostTimerRef.current > 0 || coinBoostTimerRef.current > 0 || autoDriveTimerRef.current > 0 || hyperdriveTimerRef.current > 0 || isBoosting) {
         const isHyper = hyperdriveTimerRef.current > 0;
@@ -570,52 +653,56 @@ const App: React.FC = () => {
         }
       }
 
-      if (magnetTimerRef.current > 0 || hyperdriveTimerRef.current > 0) {
-        ctx.save();
-        ctx.translate(posRef.current.x, posRef.current.y);
-        ctx.strokeStyle = hyperdriveTimerRef.current > 0 ? 'rgba(255, 255, 0, 0.4)' : 'rgba(34, 197, 94, 0.4)';
-        ctx.lineWidth = 4;
-        ctx.setLineDash([10, 15]);
-        const pulse = Math.sin(Date.now() / 150) * 20;
-        const activeRadius = hyperdriveTimerRef.current > 0 ? 225 : 150;
-        ctx.beginPath();
-        ctx.arc(0, 0, activeRadius + pulse, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      }
-
+      // Sparky Electric Pulse Visual
       if (sparkyPulseTimerRef.current > 0) {
         ctx.save();
         ctx.translate(posRef.current.x, posRef.current.y);
-        const progress = (800 - sparkyPulseTimerRef.current) / 800;
-        const currentRadius = 600 * progress;
-        const alpha = 0.5 * (1 - progress);
-        
+        const progress = (800 - sparkyPulseTimerRef.current) / 800; 
+        const maxPulseRadius = 600;
+        const currentRadius = maxPulseRadius * progress;
+        const alpha = 1.0 - progress;
+
         ctx.beginPath();
         ctx.arc(0, 0, currentRadius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(250, 204, 21, ${alpha * 0.2})`;
-        ctx.fill();
-        ctx.strokeStyle = `rgba(250, 204, 21, ${alpha})`;
-        ctx.lineWidth = 10;
+        ctx.strokeStyle = `rgba(250, 204, 21, ${alpha * 0.8})`;
+        ctx.lineWidth = 15;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#FACC15';
         ctx.stroke();
 
-        for (let i = 0; i < 20; i++) {
-          const sparkAngle = Math.random() * Math.PI * 2;
-          const sparkDist = Math.random() * currentRadius;
-          const sx = Math.cos(sparkAngle) * sparkDist;
-          const sy = Math.sin(sparkAngle) * sparkDist;
-          ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 1.5})`;
+        ctx.fillStyle = `rgba(250, 204, 21, ${alpha * 0.1})`;
+        ctx.fill();
+
+        for (let i = 0; i < 12; i++) {
+          const sparkAngle = (i / 12) * Math.PI * 2 + (progress * 5); 
+          const sx = Math.cos(sparkAngle) * currentRadius;
+          const sy = Math.sin(sparkAngle) * currentRadius;
+          
+          ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
           ctx.beginPath();
-          const size = Math.random() * 5 + 2;
-          ctx.arc(sx, sy, size, 0, Math.PI * 2);
+          ctx.arc(sx, sy, 8, 0, Math.PI * 2);
           ctx.fill();
+          
+          ctx.strokeStyle = `rgba(250, 204, 21, ${alpha})`;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(sx - 15, sy);
+          ctx.lineTo(sx + 15, sy);
+          ctx.moveTo(sx, sy - 15);
+          ctx.lineTo(sx, sy + 15);
+          ctx.stroke();
         }
         ctx.restore();
       }
 
-      ctx.save(); ctx.translate(posRef.current.x, posRef.current.y); ctx.rotate(angleRef.current);
-      if (isPhasingRef.current) { ctx.globalAlpha = 0.5; ctx.shadowBlur = 15; ctx.shadowColor = '#60A5FA'; }
+      // Player Car
+      ctx.save(); 
+      ctx.translate(posRef.current.x, posRef.current.y); 
+      ctx.rotate(angleRef.current);
+      if (isPhasingRef.current || isCurrentlyPassingThroughRef.current) { ctx.globalAlpha = 0.5; ctx.shadowBlur = 15; ctx.shadowColor = '#60A5FA'; }
       if (hyperdriveTimerRef.current > 0) { ctx.shadowBlur = 40; ctx.shadowColor = 'yellow'; }
+      if (hasSeeThroughRef.current) { ctx.shadowBlur = 10; ctx.shadowColor = '#22d3ee'; }
+      
       ctx.fillStyle = hyperdriveTimerRef.current > 0 ? '#fbbf24' : (autoDriveTimerRef.current > 0 ? '#ef4444' : char.color);
       ctx.beginPath(); ctx.roundRect(-25, -15, 50, 30, 8); ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3; ctx.stroke();
@@ -623,12 +710,6 @@ const App: React.FC = () => {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
       ctx.beginPath(); ctx.roundRect(5, -11, 12, 22, 4); ctx.fill();
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; ctx.lineWidth = 1; ctx.stroke();
-
-      if (speedBoostTimerRef.current > 0 || hyperdriveTimerRef.current > 0) {
-        ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(25, -10); ctx.lineTo(40, -10); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(25, 10); ctx.lineTo(40, 10); ctx.stroke();
-      }
       ctx.restore();
 
       if (hasShieldRef.current) {
@@ -636,9 +717,19 @@ const App: React.FC = () => {
         ctx.strokeStyle = 'rgba(168, 85, 247, 0.6)'; ctx.lineWidth = 5;
         const shieldPulse = Math.sin(Date.now() / 100) * 5;
         ctx.beginPath(); ctx.arc(0, 0, 45 + shieldPulse, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = 'rgba(168, 85, 247, 0.1)'; ctx.fill(); ctx.restore();
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.1)'; ctx.fill(); 
+        ctx.restore();
       }
-      ctx.restore();
+
+      if (hasSeeThroughRef.current) {
+        ctx.save(); ctx.translate(posRef.current.x, posRef.current.y);
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.5)'; ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.restore(); 
     };
 
     let lastTime = performance.now();
@@ -651,12 +742,25 @@ const App: React.FC = () => {
     };
     frameIdRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameIdRef.current);
-  }, [gameState, player.character, spawnPowerUp, handleUseAbility]);
+  }, [gameState, player.character, spawnPowerUp, handleUseAbility, showTeleportMap]);
 
   return (
     <div className={`relative w-screen h-screen overflow-hidden bg-green-200 ${cutscene.active ? 'scale-[1.08] grayscale-[0.3]' : ''} transition-all duration-300`}>
       {gameState === GameState.START && <StartScreen onStart={handleStart} />}
       
+      {cutscene.active && (
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-[999] bg-black/10 backdrop-blur-[2px] animate-pulse">
+          <div className="text-center">
+            <h2 className={`bungee text-8xl sm:text-9xl italic drop-shadow-2xl ${cutscene.type === 'hyper' ? 'text-yellow-400' : 'text-red-500'}`}>
+              {cutscene.type === 'hyper' ? 'HYPERDRIVE!' : 'EXHAUSTED!'}
+            </h2>
+            <p className="bungee text-white text-3xl sm:text-4xl mt-6 drop-shadow">
+              {cutscene.type === 'hyper' ? '200% VELOCITY ENGAGED' : 'SYSTEM COOLING DOWN'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {(gameState === GameState.PLAYING || gameState === GameState.TUTORIAL) && (
         <>
           <canvas ref={canvasRef} className="block w-full h-full" />
@@ -685,17 +789,71 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {cutscene.active && (
-            <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-[110] bg-white/20 backdrop-blur-md animate-pulse">
-              <div className="text-center">
-                <h2 className={`bungee text-9xl italic drop-shadow-2xl ${cutscene.type === 'hyper' ? 'text-yellow-400' : 'text-red-500'}`}>
-                  {cutscene.type === 'hyper' ? 'HYPERDRIVE!' : 'EXHAUSTED!'}
-                </h2>
-                <p className="bungee text-white text-4xl mt-6 drop-shadow">
-                  {cutscene.type === 'hyper' ? '200% VELOCITY ENGAGED' : 'SYSTEM COOLING DOWN'}
-                </p>
-              </div>
-            </div>
+          {showTeleportMap && (
+             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-8 animate-in zoom-in duration-300">
+                <div className="bg-white rounded-3xl p-6 border-8 border-purple-500 shadow-2xl w-full max-w-4xl flex flex-col gap-4">
+                  <div className="flex justify-between items-center">
+                    <h2 className="bungee text-3xl text-purple-600">SELECT CHRONO-TARGET</h2>
+                    <button onClick={() => setShowTeleportMap(false)} className="bg-gray-200 hover:bg-gray-300 p-2 rounded-xl bungee text-gray-600 transition-colors pointer-events-auto">CANCEL (ESC)</button>
+                  </div>
+                  <div className="relative aspect-square w-full max-h-[70vh] bg-green-100 border-4 border-purple-200 rounded-xl overflow-hidden cursor-crosshair group pointer-events-auto"
+                    onMouseMove={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const px = ((e.clientX - rect.left) / rect.width) * 100;
+                      const py = ((e.clientY - rect.top) / rect.height) * 100;
+                      setTeleportCursorPos({ x: px, y: py });
+                    }}
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = ((e.clientX - rect.left) / rect.width) * WORLD_SIZE;
+                      const y = ((e.clientY - rect.top) / rect.height) * WORLD_SIZE;
+                      handleTeleportSelect(x, y);
+                    }}
+                  >
+                    {OBSTACLES.map((obs, idx) => (
+                      <div key={idx} className="absolute bg-gray-400 opacity-50 rounded"
+                        style={{
+                          left: `${(obs.x / WORLD_SIZE) * 100}%`,
+                          top: `${(obs.y / WORLD_SIZE) * 100}%`,
+                          width: `${(obs.width / WORLD_SIZE) * 100}%`,
+                          height: `${(obs.height / WORLD_SIZE) * 100}%`,
+                        }}
+                      />
+                    ))}
+                    {coinsRef.current.map((coin, idx) => !coin.collected && (
+                      <div key={idx} className="absolute bg-yellow-400 rounded-full w-2 h-2 -translate-x-1/2 -translate-y-1/2 animate-pulse"
+                        style={{
+                          left: `${(coin.x / WORLD_SIZE) * 100}%`,
+                          top: `${(coin.y / WORLD_SIZE) * 100}%`,
+                        }}
+                      />
+                    ))}
+                    <div className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 z-10"
+                      style={{
+                        left: `${(posRef.current.x / WORLD_SIZE) * 100}%`,
+                        top: `${(posRef.current.y / WORLD_SIZE) * 100}%`,
+                      }}
+                    >
+                        <MapPin className="text-red-600 w-full h-full fill-red-600" />
+                    </div>
+                    {/* Visual 7x7 target area guide */}
+                    <div className="absolute border-4 border-purple-500 bg-purple-500/10 pointer-events-none transition-opacity duration-150 -translate-x-1/2 -translate-y-1/2"
+                        style={{
+                            left: `${teleportCursorPos.x}%`,
+                            top: `${teleportCursorPos.y}%`,
+                            width: `${(SECTOR_SIZE / WORLD_SIZE) * 100}%`,
+                            height: `${(SECTOR_SIZE / WORLD_SIZE) * 100}%`,
+                        }}
+                    >
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-full h-px bg-purple-500/20" />
+                        <div className="h-full w-px bg-purple-500/20 absolute" />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="bungee text-center text-purple-400 text-sm italic">Warps you and harvests all coins in the 7x7 Chrono-Zone!</p>
+                </div>
+             </div>
           )}
 
           <HUD 
@@ -703,7 +861,7 @@ const App: React.FC = () => {
             coins={hudData.coinsCollected}
             totalCoins={hudData.totalCoins}
             boost={hudData.boost}
-            maxBoost={MAX_BOOST}
+            maxBoost={hudData.maxBoost}
             onRespawn={handleRespawn}
             showPenalty={penaltyMessage}
             coinBoostLeft={hudData.coinBoostLeft}
@@ -712,6 +870,7 @@ const App: React.FC = () => {
             autoDriveLeft={hudData.autoDriveLeft}
             hyperdriveLeft={hudData.hyperdriveLeft}
             hasShield={hudData.hasShield}
+            hasSeeThrough={hudData.hasSeeThrough}
             abilityCooldown={hudData.abilityCooldown}
             maxAbilityCooldown={hudData.maxAbilityCooldown}
             abilityName={player.character?.abilityName || 'Special Ability'}

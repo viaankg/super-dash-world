@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Timer, Trophy, Zap, AlertTriangle, RotateCcw, Shield, Magnet, Wind, Cpu, Rocket, Star } from 'lucide-react';
+import { Timer, Trophy, Zap, AlertTriangle, RotateCcw, Shield, Magnet, Wind, Cpu, Rocket, Star, Eye } from 'lucide-react';
 
 interface HUDProps {
   time: number;
@@ -16,6 +16,7 @@ interface HUDProps {
   autoDriveLeft: number;
   hyperdriveLeft: number;
   hasShield: boolean;
+  hasSeeThrough: boolean;
   abilityCooldown: number;
   maxAbilityCooldown: number;
   abilityName: string;
@@ -24,11 +25,10 @@ interface HUDProps {
 
 const HUD: React.FC<HUDProps> = ({ 
   time, coins, totalCoins, boost, maxBoost, onRespawn, showPenalty,
-  coinBoostLeft, speedBoostLeft, magnetLeft, autoDriveLeft, hyperdriveLeft, hasShield,
+  coinBoostLeft, speedBoostLeft, magnetLeft, autoDriveLeft, hyperdriveLeft, hasShield, hasSeeThrough,
   abilityCooldown, maxAbilityCooldown, abilityName, onUseAbility
 }) => {
   const boostPercent = (boost / maxBoost) * 100;
-  const cooldownPercent = (abilityCooldown / maxAbilityCooldown) * 100;
   const abilityReady = abilityCooldown <= 0;
 
   return (
@@ -79,6 +79,12 @@ const HUD: React.FC<HUDProps> = ({
               <span className="font-bold bungee text-lg">AI PILOT: {autoDriveLeft.toFixed(1)}s</span>
             </div>
           )}
+          {hasSeeThrough && (
+            <div className="bg-cyan-500 text-white px-4 py-2 rounded-xl border-4 border-white shadow-lg flex items-center gap-2 animate-bounce">
+              <Eye className="w-5 h-5" />
+              <span className="font-bold bungee text-lg">SEE-THROUGH READY</span>
+            </div>
+          )}
           {coinBoostLeft > 0 && (
             <div className="bg-yellow-400 text-white px-4 py-2 rounded-xl border-4 border-white shadow-lg flex items-center gap-2">
               <Zap className="w-5 h-5" />
@@ -114,7 +120,7 @@ const HUD: React.FC<HUDProps> = ({
         </button>
       </div>
 
-      {/* Ability Button Overlay - Adjusted for mobile position */}
+      {/* Ability Button Overlay */}
       <div className="fixed left-6 bottom-48 sm:bottom-32 flex flex-col items-center gap-2 pointer-events-auto">
          <button
           onClick={onUseAbility}
@@ -127,12 +133,10 @@ const HUD: React.FC<HUDProps> = ({
         >
           <Star className={`w-12 h-12 ${abilityReady ? 'text-white' : 'text-gray-200'}`} />
           
-          {/* Circular Cooldown overlay */}
           {!abilityReady && (
             <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 animate-spin opacity-50" />
           )}
 
-          {/* Tooltip on hover */}
           <div className="absolute left-full ml-4 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 p-3 rounded-xl border-4 border-yellow-400 w-48 pointer-events-none hidden sm:block">
             <span className="bungee text-yellow-600 block text-sm">{abilityName}</span>
             <span className="text-[10px] font-bold text-gray-500">(Q Key)</span>

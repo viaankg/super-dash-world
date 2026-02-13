@@ -21,6 +21,7 @@ export interface Character {
   boostPower: number;
   abilityName: string;
   abilityDescription: string;
+  isSecret?: boolean;
 }
 
 export interface Coin {
@@ -30,7 +31,7 @@ export interface Coin {
   collected: boolean;
 }
 
-export type PowerUpType = 'speed' | 'shield' | 'magnet' | 'autoDrive' | 'hyperdrive';
+export type PowerUpType = 'speed' | 'shield' | 'magnet' | 'autoDrive' | 'hyperdrive' | 'seeThrough';
 
 export interface PowerUp {
   id: string;

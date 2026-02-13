@@ -53,6 +53,18 @@ export const CHARACTERS: Character[] = [
     abilityName: 'Turbo AI',
     abilityDescription: 'Activates AI Auto-Pilot and Speed Boost for 6 seconds.'
   },
+  {
+    id: 'warp',
+    name: 'Warp Wizard',
+    color: '#C084FC',
+    secondaryColor: '#581C87',
+    speed: 1.0,
+    handling: 1.0,
+    boostPower: 1.0,
+    abilityName: 'Chrono-Teleport',
+    abilityDescription: 'Open a map, teleport anywhere, and collect all coins in a 4x4 sector!',
+    isSecret: true
+  }
 ];
 
 export const OBSTACLES: Obstacle[] = [];
