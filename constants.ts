@@ -64,6 +64,18 @@ export const CHARACTERS: Character[] = [
     abilityName: 'Chrono-Teleport',
     abilityDescription: 'Open a map, teleport anywhere, and collect all coins in a 7x7 sector!',
     isSecret: true
+  },
+  {
+    id: 'mirror',
+    name: 'Mirror Mouse',
+    color: '#F472B6',
+    secondaryColor: '#BE185D',
+    speed: 1.0,
+    handling: 1.1,
+    boostPower: 1.0,
+    abilityName: 'Duplicate',
+    abilityDescription: 'Stop, face vertical, and spawn 4 glitchy clones for a high-speed sweep dash!',
+    isSecret: true
   }
 ];
 

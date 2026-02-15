@@ -11,11 +11,13 @@ interface StartScreenProps {
 const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
   const [name, setName] = useState('');
   const [selectedChar, setSelectedChar] = useState(CHARACTERS[0]);
-  const [isWarpUnlocked, setIsWarpUnlocked] = useState(false);
+  const [unlockedIds, setUnlockedIds] = useState<string[]>([]);
 
   useEffect(() => {
-    const unlocked = localStorage.getItem('velocity_valley_warp_unlocked') === 'true';
-    setIsWarpUnlocked(unlocked);
+    const ids = [];
+    if (localStorage.getItem('velocity_valley_warp_unlocked') === 'true') ids.push('warp');
+    if (localStorage.getItem('velocity_valley_mirror_unlocked') === 'true') ids.push('mirror');
+    setUnlockedIds(ids);
   }, []);
 
   const handleStart = () => {
@@ -24,7 +26,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
     }
   };
 
-  const visibleCharacters = CHARACTERS.filter(char => !char.isSecret || isWarpUnlocked);
+  const visibleCharacters = CHARACTERS.filter(char => !char.isSecret || unlockedIds.includes(char.id));
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4 z-50 overflow-y-auto">
@@ -45,7 +47,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
 
         <div className="mb-8">
           <label className="block text-gray-700 font-bold mb-4 text-xl text-center">Pick your character!</label>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
             {visibleCharacters.map((char) => (
               <button
                 key={char.id}
@@ -55,20 +57,20 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
                 }`}
               >
                 <div 
-                  className="w-16 h-16 rounded-full mb-2 border-4 border-white shadow-inner relative flex items-center justify-center"
+                  className="w-12 h-12 md:w-16 md:h-16 rounded-full mb-2 border-4 border-white shadow-inner relative flex items-center justify-center"
                   style={{ backgroundColor: char.color }}
                 >
                    {char.isSecret && <span className="absolute -top-2 -right-2 bg-purple-500 text-white p-1 rounded-full text-[8px] border-2 border-white">SECRET</span>}
                 </div>
-                <span className="font-bold text-[10px] md:text-sm text-center">{char.name}</span>
+                <span className="font-bold text-[10px] md:text-[12px] text-center leading-tight">{char.name}</span>
               </button>
             ))}
-            {!isWarpUnlocked && (
+            {unlockedIds.length < 2 && (
               <div className="p-4 rounded-2xl border-4 border-dashed border-gray-300 flex flex-col items-center opacity-50 grayscale">
-                <div className="w-16 h-16 rounded-full mb-2 bg-gray-200 border-4 border-white flex items-center justify-center">
+                <div className="w-12 h-12 md:w-16 md:h-16 rounded-full mb-2 bg-gray-200 border-4 border-white flex items-center justify-center">
                   <Lock className="text-gray-400" />
                 </div>
-                <span className="font-bold text-[10px] md:text-sm text-center text-gray-400">Locked?</span>
+                <span className="font-bold text-[10px] md:text-sm text-center text-gray-400">Secret?</span>
               </div>
             )}
           </div>
@@ -81,9 +83,9 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
             <p className="text-blue-800 text-sm italic">{selectedChar.abilityDescription}</p>
           </div>
           
-          {!isWarpUnlocked && (
+          {unlockedIds.length < 2 && (
             <p className="mt-4 text-center text-gray-500 text-xs font-bold uppercase tracking-widest">
-              Hint: Win in under 78 seconds to unlock a special racer!
+              Hint: Win in under 78 seconds to unlock secret racers!
             </p>
           )}
         </div>

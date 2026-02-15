@@ -67,6 +67,12 @@ const App: React.FC = () => {
   const isPhasingRef = useRef<boolean>(false);
   const sparkyPulseTimerRef = useRef<number>(0); 
 
+  // Mirror ability state
+  const isMirroringRef = useRef<boolean>(false);
+  const mirrorClonesRef = useRef<Vector2D[]>([]);
+  const mirrorTimerRef = useRef<number>(0);
+  const mirrorDashRef = useRef<boolean>(false);
+
   const tutorialMessages = [
     "Welcome Racer! Use WASD or Arrows to drive around the map.",
     "Great! Now hold SHIFT to use your NITRO BOOST! Watch the blue bar at the bottom.",
@@ -137,7 +143,7 @@ const App: React.FC = () => {
   };
 
   const handleUseAbility = useCallback(() => {
-    if (abilityCooldownRef.current > 0 || !player.character || showTeleportMap) return;
+    if (abilityCooldownRef.current > 0 || !player.character || showTeleportMap || isMirroringRef.current) return;
 
     const char = player.character;
 
@@ -153,7 +159,7 @@ const App: React.FC = () => {
     } else if (char.id === 'sparky') {
       abilityCooldownRef.current = ABILITY_COOLDOWN;
       const radius = 600;
-      sparkyPulseTimerRef.current = 800; 
+      sparkyPulseTimerRef.current = 1200; // Increased duration for visibility
       coinsRef.current.forEach(coin => {
         if (!coin.collected) {
           const dx = posRef.current.x - coin.x;
@@ -172,8 +178,29 @@ const App: React.FC = () => {
       speedBoostTimerRef.current = 6000;
     } else if (char.id === 'warp') {
       setShowTeleportMap(true);
+    } else if (char.id === 'mirror') {
+      isMirroringRef.current = true;
+      mirrorDashRef.current = false;
+      mirrorTimerRef.current = 4000; // Total duration
+      velRef.current = 0;
+      angleRef.current = -Math.PI / 2; // Face vertical exactly
+      
+      const px = posRef.current.x;
+      const py = posRef.current.y;
+      mirrorClonesRef.current = [
+        { x: px - 300, y: py },
+        { x: px - 150, y: py },
+        { x: px + 150, y: py },
+        { x: px + 300, y: py }
+      ];
+
+      setTimeout(() => {
+        mirrorDashRef.current = true;
+        setSpawnAlert("DUPLICATE SWEEP!");
+        setTimeout(() => setSpawnAlert(null), 1500);
+      }, 700);
     }
-  }, [player.character, showTeleportMap]);
+  }, [player.character, showTeleportMap, isMirroringRef]);
 
   const handleTeleportSelect = (x: number, y: number) => {
     if (!player.character || player.character.id !== 'warp') return;
@@ -215,6 +242,8 @@ const App: React.FC = () => {
     abilityCooldownRef.current = 0;
     isPhasingRef.current = false;
     sparkyPulseTimerRef.current = 0;
+    isMirroringRef.current = false;
+    mirrorClonesRef.current = [];
     hasSeeThroughRef.current = false;
     isCurrentlyPassingThroughRef.current = false;
     setShowTeleportMap(false);
@@ -247,6 +276,8 @@ const App: React.FC = () => {
     abilityCooldownRef.current = 0;
     isPhasingRef.current = false;
     sparkyPulseTimerRef.current = 0;
+    isMirroringRef.current = false;
+    mirrorClonesRef.current = [];
     powerUpsRef.current = [];
     setPenaltyMessage(false);
     setSpawnAlert(null);
@@ -330,6 +361,15 @@ const App: React.FC = () => {
         if (sparkyPulseTimerRef.current > 0) {
           sparkyPulseTimerRef.current = Math.max(0, sparkyPulseTimerRef.current - dt);
         }
+        if (isMirroringRef.current) {
+          mirrorTimerRef.current = Math.max(0, mirrorTimerRef.current - dt);
+          if (mirrorTimerRef.current <= 0) {
+            isMirroringRef.current = false;
+            mirrorDashRef.current = false;
+            abilityCooldownRef.current = ABILITY_COOLDOWN;
+            mirrorClonesRef.current = [];
+          }
+        }
       }
 
       if (coinBoostTimerRef.current > 0) coinBoostTimerRef.current = Math.max(0, coinBoostTimerRef.current - dt);
@@ -379,7 +419,7 @@ const App: React.FC = () => {
       let aiBraking = false;
       let aiTurnWeight = 0;
 
-      if (autoDriveTimerRef.current > 0 && hyperdriveTimerRef.current <= 0) {
+      if (autoDriveTimerRef.current > 0 && hyperdriveTimerRef.current <= 0 && !isMirroringRef.current) {
         const uncollected = coinsRef.current.filter(c => !c.collected);
         if (uncollected.length > 0) {
           let closest = uncollected[0];
@@ -424,7 +464,7 @@ const App: React.FC = () => {
         }
       }
 
-      if (autoDriveTimerRef.current <= 0) {
+      if (autoDriveTimerRef.current <= 0 && !isMirroringRef.current) {
         if (keysRef.current['KeyA'] || keysRef.current['ArrowLeft']) angleRef.current -= turnSpeed;
         if (keysRef.current['KeyD'] || keysRef.current['ArrowRight']) angleRef.current += turnSpeed;
       }
@@ -433,32 +473,40 @@ const App: React.FC = () => {
       const isAutoDriving = autoDriveTimerRef.current > 0 || hyperdriveTimerRef.current > 0;
       const shouldAutoBoost = autoDriveTimerRef.current > 0 && boostRef.current > 30 && !aiBraking;
 
-      if (isAutoDriving) {
-        if (aiBraking && hyperdriveTimerRef.current <= 0) {
-          currentAccel = -accel * 0.3;
-        } else {
-          currentAccel = accel; 
+      if (isMirroringRef.current) {
+        if (mirrorDashRef.current) {
+          const dashSpeed = 18;
+          posRef.current.y -= dashSpeed;
+          mirrorClonesRef.current.forEach(clone => clone.y -= dashSpeed);
         }
       } else {
-        if (keysRef.current['KeyW'] || keysRef.current['ArrowUp']) currentAccel = accel;
-        if (keysRef.current['KeyS'] || keysRef.current['ArrowDown']) currentAccel = -accel * 0.5;
+        if (isAutoDriving) {
+          if (aiBraking && hyperdriveTimerRef.current <= 0) {
+            currentAccel = -accel * 0.3;
+          } else {
+            currentAccel = accel; 
+          }
+        } else {
+          if (keysRef.current['KeyW'] || keysRef.current['ArrowUp']) currentAccel = accel;
+          if (keysRef.current['KeyS'] || keysRef.current['ArrowDown']) currentAccel = -accel * 0.5;
+        }
+
+        const isBoosting = (isHoldingBoost || shouldAutoBoost) && boostRef.current > 0;
+        if (isBoosting) {
+          currentAccel *= boostMult;
+          boostRef.current = Math.max(0, boostRef.current - BOOST_CONSUMPTION_RATE);
+        } else {
+          boostRef.current = Math.min(MAX_BOOST, boostRef.current + BOOST_RECHARGE_RATE);
+        }
+
+        velRef.current = (velRef.current + currentAccel) * friction;
+        if (Math.abs(velRef.current) > maxVel && !isBoosting && hyperdriveTimerRef.current <= 0) velRef.current *= 0.95;
+
+        posRef.current.x += Math.cos(angleRef.current) * velRef.current;
+        posRef.current.y += Math.sin(angleRef.current) * velRef.current;
       }
 
-      const isBoosting = (isHoldingBoost || shouldAutoBoost) && boostRef.current > 0;
-      if (isBoosting) {
-        currentAccel *= boostMult;
-        boostRef.current = Math.max(0, boostRef.current - BOOST_CONSUMPTION_RATE);
-      } else {
-        boostRef.current = Math.min(MAX_BOOST, boostRef.current + BOOST_RECHARGE_RATE);
-      }
-
-      velRef.current = (velRef.current + currentAccel) * friction;
-      if (Math.abs(velRef.current) > maxVel && !isBoosting && hyperdriveTimerRef.current <= 0) velRef.current *= 0.95;
-
-      posRef.current.x += Math.cos(angleRef.current) * velRef.current;
-      posRef.current.y += Math.sin(angleRef.current) * velRef.current;
-
-      if (hyperdriveTimerRef.current <= 0 && !isPhasingRef.current) {
+      if (hyperdriveTimerRef.current <= 0 && !isPhasingRef.current && !isMirroringRef.current) {
         const playerRadius = 15;
         let isInsideAny = false;
         OBSTACLES.forEach(obs => {
@@ -501,12 +549,22 @@ const App: React.FC = () => {
 
       const inHyperdrive = hyperdriveTimerRef.current > 0;
       let hitBoundary = false;
-      if (posRef.current.x < 0) { if (inHyperdrive) posRef.current.x = WORLD_SIZE - 40; else { posRef.current.x = 10; hitBoundary = true; } }
-      if (posRef.current.x > WORLD_SIZE) { if (inHyperdrive) posRef.current.x = 40; else { posRef.current.x = WORLD_SIZE - 10; hitBoundary = true; } }
-      if (posRef.current.y < 0) { if (inHyperdrive) posRef.current.y = WORLD_SIZE - 40; else { posRef.current.y = 10; hitBoundary = true; } }
-      if (posRef.current.y > WORLD_SIZE) { if (inHyperdrive) posRef.current.y = 40; else { posRef.current.y = WORLD_SIZE - 10; hitBoundary = true; } }
+      if (posRef.current.x < 0) { if (inHyperdrive || isMirroringRef.current) posRef.current.x = WORLD_SIZE - 40; else { posRef.current.x = 10; hitBoundary = true; } }
+      if (posRef.current.x > WORLD_SIZE) { if (inHyperdrive || isMirroringRef.current) posRef.current.x = 40; else { posRef.current.x = WORLD_SIZE - 10; hitBoundary = true; } }
+      if (posRef.current.y < 0) { if (inHyperdrive || isMirroringRef.current) posRef.current.y = WORLD_SIZE - 40; else { posRef.current.y = 10; hitBoundary = true; } }
+      if (posRef.current.y > WORLD_SIZE) { if (inHyperdrive || isMirroringRef.current) posRef.current.y = 40; else { posRef.current.y = WORLD_SIZE - 10; hitBoundary = true; } }
 
-      if (hitBoundary && !isPhasingRef.current) {
+      // Corrected boundary looping for Mirror Dash 
+      if (isMirroringRef.current) {
+        mirrorClonesRef.current.forEach(clone => {
+          if (clone.x < 0) clone.x = WORLD_SIZE - 40;
+          if (clone.x > WORLD_SIZE) clone.x = 40;
+          if (clone.y < 0) clone.y = WORLD_SIZE - 40;
+          if (clone.y > WORLD_SIZE) clone.y = 40;
+        });
+      }
+
+      if (hitBoundary && !isPhasingRef.current && !isMirroringRef.current) {
         const isInvincible = coinBoostTimerRef.current > 0 || autoDriveTimerRef.current > 0;
         if (!isInvincible) {
           if (hasShieldRef.current) {
@@ -536,13 +594,26 @@ const App: React.FC = () => {
         return true;
       });
 
-      const collectionRadius = hyperdriveTimerRef.current > 0 ? 225 : (magnetTimerRef.current > 0 ? 150 : 40);
+      const collectionRadius = hyperdriveTimerRef.current > 0 ? 225 : (magnetTimerRef.current > 0 ? 150 : (isMirroringRef.current ? 75 : 40));
       let collectedCount = 0;
       coinsRef.current.forEach(coin => {
         if (!coin.collected) {
           const dx = posRef.current.x - coin.x;
           const dy = posRef.current.y - coin.y;
-          if (Math.sqrt(dx*dx + dy*dy) < collectionRadius) {
+          let isHit = Math.sqrt(dx*dx + dy*dy) < collectionRadius;
+          
+          if (!isHit && isMirroringRef.current) {
+            for (const clone of mirrorClonesRef.current) {
+              const cdx = clone.x - coin.x;
+              const cdy = clone.y - coin.y;
+              if (Math.sqrt(cdx*cdx + cdy*cdy) < collectionRadius) {
+                isHit = true;
+                break;
+              }
+            }
+          }
+
+          if (isHit) {
             coin.collected = true;
             boostRef.current = Math.min(MAX_BOOST, boostRef.current + 20);
             coinBoostTimerRef.current = 5000; 
@@ -574,7 +645,10 @@ const App: React.FC = () => {
       if (gameState === GameState.PLAYING && collectedCount === coinsRef.current.length) {
         const finalTime = timerRef.current;
         const finalScore = Math.floor(Math.max(0, 10000 - finalTime * 10) + (collectedCount * 100));
-        if (finalTime <= 78) localStorage.setItem('velocity_valley_warp_unlocked', 'true');
+        if (finalTime <= 78) {
+          localStorage.setItem('velocity_valley_warp_unlocked', 'true');
+          localStorage.setItem('velocity_valley_mirror_unlocked', 'true');
+        }
         setScore({ name: player.name, character: player.character?.name || '', time: finalTime, score: finalScore, date: new Date().toISOString() });
         setGameState(GameState.WIN);
       }
@@ -585,11 +659,15 @@ const App: React.FC = () => {
       if (!canvas) return;
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      const camX = posRef.current.x - canvas.width / 2;
-      const camY = posRef.current.y - canvas.height / 2;
+      
+      const camScale = isMirroringRef.current ? 0.75 : 1.0;
+      const camX = posRef.current.x - (canvas.width / camScale) / 2;
+      const camY = posRef.current.y - (canvas.height / camScale) / 2;
+      
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       ctx.save();
+      ctx.scale(camScale, camScale);
       ctx.translate(-camX, -camY);
       
       // Ground
@@ -605,7 +683,7 @@ const App: React.FC = () => {
       // Obstacles
       OBSTACLES.forEach(obs => {
         ctx.fillStyle = obs.type === 'tree' ? '#166534' : '#525252';
-        if (hyperdriveTimerRef.current > 0 || isPhasingRef.current || isCurrentlyPassingThroughRef.current) ctx.globalAlpha = 0.3;
+        if (hyperdriveTimerRef.current > 0 || isPhasingRef.current || isCurrentlyPassingThroughRef.current || isMirroringRef.current) ctx.globalAlpha = 0.3;
         ctx.beginPath(); ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 10); ctx.fill();
         ctx.globalAlpha = 1.0;
       });
@@ -653,79 +731,116 @@ const App: React.FC = () => {
         }
       }
 
-      // Sparky Electric Pulse Visual
+      // Sparky Electric Pulse Visual (ENHANCED AND FIXED)
       if (sparkyPulseTimerRef.current > 0) {
         ctx.save();
         ctx.translate(posRef.current.x, posRef.current.y);
-        const progress = (800 - sparkyPulseTimerRef.current) / 800; 
-        const maxPulseRadius = 600;
+        const maxPulseTime = 1200;
+        const progress = Math.min(1, Math.max(0, (maxPulseTime - sparkyPulseTimerRef.current) / maxPulseTime));
+        const maxPulseRadius = 800;
         const currentRadius = maxPulseRadius * progress;
-        const alpha = 1.0 - progress;
+        const alpha = 1.0 - (progress * progress); // Fades slower then faster for impact
 
+        // Main outer ring
         ctx.beginPath();
         ctx.arc(0, 0, currentRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(250, 204, 21, ${alpha * 0.8})`;
-        ctx.lineWidth = 15;
+        ctx.strokeStyle = `rgba(250, 204, 21, ${alpha})`;
+        ctx.lineWidth = 15 * (1 - progress); 
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#FACC15';
         ctx.stroke();
 
-        ctx.fillStyle = `rgba(250, 204, 21, ${alpha * 0.1})`;
+        // Inner glowing fill
+        ctx.fillStyle = `rgba(250, 204, 21, ${alpha * 0.15})`;
         ctx.fill();
+
+        // Extra "electric arcs"
+        for (let j = 0; j < 6; j++) {
+            const arcAngle = (j / 6) * Math.PI * 2 + (progress * Math.PI);
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(arcAngle) * (currentRadius * 0.8), Math.sin(arcAngle) * (currentRadius * 0.8));
+            ctx.lineTo(Math.cos(arcAngle) * (currentRadius * 1.1), Math.sin(arcAngle) * (currentRadius * 1.1));
+            ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
         ctx.restore();
       }
 
-      // Magnet/Hyperdrive field Ring
-      if (magnetTimerRef.current > 0 || hyperdriveTimerRef.current > 0) {
+      // Magnet/Hyperdrive/Duplicate Field Rings
+      const drawFieldRing = (x: number, y: number, radius: number, isHyper: boolean, isMirror: boolean) => {
         ctx.save();
-        ctx.translate(posRef.current.x, posRef.current.y);
-        ctx.strokeStyle = hyperdriveTimerRef.current > 0 ? 'rgba(255, 255, 0, 0.6)' : 'rgba(34, 197, 94, 0.6)';
-        ctx.lineWidth = 4;
+        ctx.translate(x, y);
+        // "1/2 a magnet" for mirror clones means slightly smaller or semi-transparent
+        ctx.strokeStyle = isHyper ? 'rgba(255, 255, 0, 0.6)' : (isMirror ? 'rgba(244, 114, 182, 0.4)' : 'rgba(34, 197, 94, 0.6)');
+        ctx.lineWidth = isMirror ? 2 : 4;
         ctx.setLineDash([10, 15]);
-        const pulse = Math.sin(Date.now() / 150) * 15;
-        const activeRadius = hyperdriveTimerRef.current > 0 ? 225 : 150;
+        const pulse = Math.sin(Date.now() / 150) * 10;
         ctx.beginPath();
-        ctx.arc(0, 0, activeRadius + pulse, 0, Math.PI * 2);
+        ctx.arc(0, 0, radius + pulse, 0, Math.PI * 2);
         ctx.stroke();
         
-        // Add subtle glow
-        ctx.globalAlpha = 0.2;
-        ctx.fillStyle = hyperdriveTimerRef.current > 0 ? 'yellow' : '#22c55e';
+        ctx.globalAlpha = isMirror ? 0.05 : 0.15;
+        ctx.fillStyle = isHyper ? 'yellow' : (isMirror ? '#F472B6' : '#22c55e');
         ctx.beginPath();
-        ctx.arc(0, 0, activeRadius + pulse, 0, Math.PI * 2);
+        ctx.arc(0, 0, radius + pulse, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+      };
+
+      if (magnetTimerRef.current > 0 || hyperdriveTimerRef.current > 0 || isMirroringRef.current) {
+        const radius = hyperdriveTimerRef.current > 0 ? 225 : (magnetTimerRef.current > 0 ? 150 : 75);
+        drawFieldRing(posRef.current.x, posRef.current.y, radius, hyperdriveTimerRef.current > 0, isMirroringRef.current);
+        if (isMirroringRef.current) {
+          mirrorClonesRef.current.forEach(clone => {
+            drawFieldRing(clone.x, clone.y, radius, false, true);
+          });
+        }
       }
 
-      // Player Car
-      ctx.save(); 
-      ctx.translate(posRef.current.x, posRef.current.y); 
-      ctx.rotate(angleRef.current);
-      if (isPhasingRef.current || isCurrentlyPassingThroughRef.current) { ctx.globalAlpha = 0.5; ctx.shadowBlur = 15; ctx.shadowColor = '#60A5FA'; }
-      if (hyperdriveTimerRef.current > 0) { ctx.shadowBlur = 40; ctx.shadowColor = 'yellow'; }
-      if (hasSeeThroughRef.current) { ctx.shadowBlur = 10; ctx.shadowColor = '#22d3ee'; }
-      
-      ctx.fillStyle = hyperdriveTimerRef.current > 0 ? '#fbbf24' : (autoDriveTimerRef.current > 0 ? '#ef4444' : char.color);
-      ctx.beginPath(); ctx.roundRect(-25, -15, 50, 30, 8); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3; ctx.stroke();
-      
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.beginPath(); ctx.roundRect(5, -11, 12, 22, 4); ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.restore();
+      // Player and Clones
+      const drawCar = (x: number, y: number, ang: number, carColor: string, isGlitch: boolean) => {
+        ctx.save(); 
+        ctx.translate(x, y); 
+        ctx.rotate(ang);
+        
+        if (isGlitch) {
+          const ox = (Math.random() - 0.5) * 12;
+          const oy = (Math.random() - 0.5) * 12;
+          ctx.translate(ox, oy);
+          if (Math.random() > 0.7) {
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = Math.random() > 0.5 ? '#00ffff' : '#ff00ff';
+          }
+        }
+
+        if (isPhasingRef.current || isCurrentlyPassingThroughRef.current || isMirroringRef.current) { 
+          ctx.globalAlpha = isGlitch ? 0.7 : 0.6; 
+          ctx.shadowBlur = 15; 
+          ctx.shadowColor = carColor; 
+        }
+        
+        ctx.fillStyle = hyperdriveTimerRef.current > 0 ? '#fbbf24' : (autoDriveTimerRef.current > 0 ? '#ef4444' : carColor);
+        ctx.beginPath(); ctx.roundRect(-25, -15, 50, 30, 8); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3; ctx.stroke();
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.beginPath(); ctx.roundRect(5, -11, 12, 22, 4); ctx.fill();
+        ctx.restore();
+      };
+
+      drawCar(posRef.current.x, posRef.current.y, angleRef.current, char.color, false);
+      if (isMirroringRef.current) {
+        mirrorClonesRef.current.forEach(clone => {
+          drawCar(clone.x, clone.y, angleRef.current, char.color, true);
+        });
+      }
 
       if (hasShieldRef.current) {
         ctx.save(); ctx.translate(posRef.current.x, posRef.current.y);
         ctx.strokeStyle = 'rgba(168, 85, 247, 0.6)'; ctx.lineWidth = 5;
         const shieldPulse = Math.sin(Date.now() / 100) * 5;
         ctx.beginPath(); ctx.arc(0, 0, 45 + shieldPulse, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = 'rgba(168, 85, 247, 0.1)'; ctx.fill(); 
-        ctx.restore();
-      }
-
-      if (hasSeeThroughRef.current) {
-        ctx.save(); ctx.translate(posRef.current.x, posRef.current.y);
-        ctx.strokeStyle = 'rgba(34, 211, 238, 0.5)'; ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
-        ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
       }
 
